@@ -1,7 +1,8 @@
 services:
   schematic:
     build: .
-    image: gost-schematic:local
+    container_name: sxematron
+    image: sxematron:local
     init: true
     restart: unless-stopped
     ports:

@@ -4,5 +4,8 @@ data
 *.zip
 *.sqlite*
 .git
+AGENTS.md
+.env
+.env.*
 coverage
 artifacts
