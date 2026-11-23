@@ -1,0 +1,7 @@
+import type {ComponentDefinition} from '../../../packages/core/src/types.js';
+export const clone=<T,>(v:T):T=>structuredClone(v);
+let uniqueSequence=0;export const id=(prefix:string)=>`${prefix}_${Date.now().toString(36)}_${(++uniqueSequence).toString(36)}`;
+export function download(name:string,data:string|Uint8Array,mime='application/json'){const bytes=typeof data==='string'?data:new Uint8Array(data);const u=URL.createObjectURL(new Blob([bytes],{type:mime}));const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),10000);}
+export async function api<T>(url:string,options:RequestInit={}):Promise<T>{const r=await fetch(url,{...options,headers:{'Content-Type':'application/json',...options.headers}});if(!r.ok){let msg=await r.text();try{const j=JSON.parse(msg);msg=j.message??j.error??msg;if(j.issues)msg+='\n'+j.issues.map((i:any)=>i.message).join('\n');}catch{}throw new Error(msg);}if(r.status===204)return undefined as T;return await r.json();}
+export async function readJson(file:File){if(file.size>10*1024*1024)throw new Error('Размер файла превышает 10 МиБ.');return JSON.parse(await file.text());}
+export function libraryFromFile(value:any):ComponentDefinition[]{if(Array.isArray(value))return value;if(Array.isArray(value?.components))return value.components;if(value?.component_code)return[value];throw new Error('Нужен JSON компонента или экспорт библиотеки.');}

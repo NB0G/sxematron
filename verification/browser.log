@@ -1,0 +1,11 @@
+PASS production server + CSP + library + JSON import
+PASS multisheet navigation and portable outlined SVG ZIP download
+PASS mouse drag persists fixed mm coordinates and undo restores position
+PASS manual wire geometry survives orthogonal edit and JSON round trip
+PASS invalid pin import is rejected without replacing current document
+PASS library component can be added manually to an existing scheme
+PASS manual electrical net editor uses physical pin numbers
+PASS constructor JSON import + graphical circle + library persistence
+PASS library search/preview and generated current catalog
+PASS theme toggle and mobile viewing without page overflow
+PASS offline runtime makes no external requests and has no JavaScript/CSP errors

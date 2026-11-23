@@ -1,0 +1,836 @@
+[
+  {
+    "format_version": "1.0",
+    "component_code": "GEN_R",
+    "name": "Резистор — универсальный шаблон",
+    "category": "Типовые УГО",
+    "positional_prefix": "R",
+    "physical_pins": [
+      {
+        "number": "1"
+      },
+      {
+        "number": "2"
+      }
+    ],
+    "variants": [
+      {
+        "variant_code": "01",
+        "name": "Основной",
+        "sections": [
+          {
+            "section_id": "BODY",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "rectangle",
+                "x": 0,
+                "y": 0,
+                "width": 10,
+                "height": 5
+              }
+            ],
+            "pins": [
+              {
+                "number": "1",
+                "x": -5,
+                "y": 2.5,
+                "side": "left"
+              },
+              {
+                "number": "2",
+                "x": 15,
+                "y": 2.5,
+                "side": "right"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format_version": "1.0",
+    "component_code": "GEN_C",
+    "name": "Конденсатор — универсальный шаблон",
+    "category": "Типовые УГО",
+    "positional_prefix": "C",
+    "physical_pins": [
+      {
+        "number": "1"
+      },
+      {
+        "number": "2"
+      }
+    ],
+    "variants": [
+      {
+        "variant_code": "01",
+        "name": "Основной",
+        "sections": [
+          {
+            "section_id": "BODY",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "line",
+                "x": 4,
+                "y": -1,
+                "x2": 4,
+                "y2": 6
+              },
+              {
+                "id": "g1",
+                "kind": "line",
+                "x": 6,
+                "y": -1,
+                "x2": 6,
+                "y2": 6
+              },
+              {
+                "id": "g2",
+                "kind": "line",
+                "x": 0,
+                "y": 2.5,
+                "x2": 4,
+                "y2": 2.5
+              },
+              {
+                "id": "g3",
+                "kind": "line",
+                "x": 6,
+                "y": 2.5,
+                "x2": 10,
+                "y2": 2.5
+              }
+            ],
+            "pins": [
+              {
+                "number": "1",
+                "x": -5,
+                "y": 2.5,
+                "side": "left"
+              },
+              {
+                "number": "2",
+                "x": 15,
+                "y": 2.5,
+                "side": "right"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format_version": "1.0",
+    "component_code": "GEN_L",
+    "name": "Индуктивность — универсальный шаблон",
+    "category": "Типовые УГО",
+    "positional_prefix": "L",
+    "physical_pins": [
+      {
+        "number": "1"
+      },
+      {
+        "number": "2"
+      }
+    ],
+    "variants": [
+      {
+        "variant_code": "01",
+        "name": "Основной",
+        "sections": [
+          {
+            "section_id": "BODY",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "arc",
+                "x": 1.25,
+                "y": 2.5,
+                "r": 1.25,
+                "start": 180,
+                "end": 360
+              },
+              {
+                "id": "g1",
+                "kind": "arc",
+                "x": 3.75,
+                "y": 2.5,
+                "r": 1.25,
+                "start": 180,
+                "end": 360
+              },
+              {
+                "id": "g2",
+                "kind": "arc",
+                "x": 6.25,
+                "y": 2.5,
+                "r": 1.25,
+                "start": 180,
+                "end": 360
+              },
+              {
+                "id": "g3",
+                "kind": "arc",
+                "x": 8.75,
+                "y": 2.5,
+                "r": 1.25,
+                "start": 180,
+                "end": 360
+              }
+            ],
+            "pins": [
+              {
+                "number": "1",
+                "x": -5,
+                "y": 2.5,
+                "side": "left"
+              },
+              {
+                "number": "2",
+                "x": 15,
+                "y": 2.5,
+                "side": "right"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format_version": "1.0",
+    "component_code": "GEN_D",
+    "name": "Диод — условный тестовый символ",
+    "category": "Типовые УГО",
+    "positional_prefix": "VD",
+    "physical_pins": [
+      {
+        "number": "1"
+      },
+      {
+        "number": "2"
+      }
+    ],
+    "variants": [
+      {
+        "variant_code": "01",
+        "name": "Основной",
+        "sections": [
+          {
+            "section_id": "BODY",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "polygon",
+                "points": [
+                  {
+                    "x": 2,
+                    "y": -1
+                  },
+                  {
+                    "x": 2,
+                    "y": 6
+                  },
+                  {
+                    "x": 8,
+                    "y": 2.5
+                  }
+                ]
+              },
+              {
+                "id": "g1",
+                "kind": "line",
+                "x": 8,
+                "y": -1,
+                "x2": 8,
+                "y2": 6
+              },
+              {
+                "id": "g2",
+                "kind": "line",
+                "x": 0,
+                "y": 2.5,
+                "x2": 2,
+                "y2": 2.5
+              },
+              {
+                "id": "g3",
+                "kind": "line",
+                "x": 8,
+                "y": 2.5,
+                "x2": 10,
+                "y2": 2.5
+              }
+            ],
+            "pins": [
+              {
+                "number": "1",
+                "x": -5,
+                "y": 2.5,
+                "side": "left"
+              },
+              {
+                "number": "2",
+                "x": 15,
+                "y": 2.5,
+                "side": "right"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format_version": "1.0",
+    "component_code": "GEN_SWITCH",
+    "name": "Контакт — тестовый символ",
+    "category": "Типовые УГО",
+    "positional_prefix": "SA",
+    "physical_pins": [
+      {
+        "number": "1"
+      },
+      {
+        "number": "2"
+      }
+    ],
+    "variants": [
+      {
+        "variant_code": "01",
+        "name": "Основной",
+        "sections": [
+          {
+            "section_id": "BODY",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "line",
+                "x": 0,
+                "y": 2.5,
+                "x2": 8,
+                "y2": -1
+              },
+              {
+                "id": "g1",
+                "kind": "circle",
+                "x": 0,
+                "y": 2.5,
+                "r": 0.7
+              },
+              {
+                "id": "g2",
+                "kind": "circle",
+                "x": 10,
+                "y": 2.5,
+                "r": 0.7
+              }
+            ],
+            "pins": [
+              {
+                "number": "1",
+                "x": -5,
+                "y": 2.5,
+                "side": "left"
+              },
+              {
+                "number": "2",
+                "x": 15,
+                "y": 2.5,
+                "side": "right"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format_version": "1.0",
+    "component_code": "DEMO_CONNECTOR",
+    "name": "Разъём на 4 контакта — синтетический",
+    "category": "Типовые УГО",
+    "positional_prefix": "X",
+    "physical_pins": [
+      {
+        "number": "1"
+      },
+      {
+        "number": "2"
+      },
+      {
+        "number": "3"
+      },
+      {
+        "number": "4"
+      }
+    ],
+    "variants": [
+      {
+        "variant_code": "01",
+        "name": "Основной",
+        "sections": [
+          {
+            "section_id": "BODY",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "rectangle",
+                "x": 0,
+                "y": 0,
+                "width": 10,
+                "height": 25
+              }
+            ],
+            "pins": [
+              {
+                "number": "1",
+                "x": -5,
+                "y": 5,
+                "side": "left"
+              },
+              {
+                "number": "2",
+                "x": -5,
+                "y": 10,
+                "side": "left"
+              },
+              {
+                "number": "3",
+                "x": -5,
+                "y": 15,
+                "side": "left"
+              },
+              {
+                "number": "4",
+                "x": -5,
+                "y": 20,
+                "side": "left"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format_version": "1.0",
+    "component_code": "DEMO_SOURCE",
+    "name": "Источник — синтетический",
+    "category": "Типовые УГО",
+    "positional_prefix": "G",
+    "physical_pins": [
+      {
+        "number": "1"
+      },
+      {
+        "number": "2"
+      }
+    ],
+    "variants": [
+      {
+        "variant_code": "01",
+        "name": "Основной",
+        "sections": [
+          {
+            "section_id": "BODY",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "circle",
+                "x": 5,
+                "y": 5,
+                "r": 5
+              },
+              {
+                "id": "g1",
+                "kind": "line",
+                "x": 3,
+                "y": 3,
+                "x2": 7,
+                "y2": 3
+              },
+              {
+                "id": "g2",
+                "kind": "line",
+                "x": 5,
+                "y": 1,
+                "x2": 5,
+                "y2": 5
+              },
+              {
+                "id": "g3",
+                "kind": "line",
+                "x": 3,
+                "y": 7,
+                "x2": 7,
+                "y2": 7
+              }
+            ],
+            "pins": [
+              {
+                "number": "1",
+                "x": 5,
+                "y": -5,
+                "side": "top"
+              },
+              {
+                "number": "2",
+                "x": 5,
+                "y": 15,
+                "side": "bottom"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format_version": "1.0",
+    "component_code": "DEMO_TRANSISTOR",
+    "name": "Транзистор — синтетическое УГО",
+    "category": "Типовые УГО",
+    "positional_prefix": "VT",
+    "physical_pins": [
+      {
+        "number": "1"
+      },
+      {
+        "number": "2"
+      },
+      {
+        "number": "3"
+      }
+    ],
+    "variants": [
+      {
+        "variant_code": "01",
+        "name": "Основной",
+        "sections": [
+          {
+            "section_id": "BODY",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "circle",
+                "x": 8,
+                "y": 8,
+                "r": 8
+              },
+              {
+                "id": "g1",
+                "kind": "line",
+                "x": 4,
+                "y": 3,
+                "x2": 4,
+                "y2": 13
+              },
+              {
+                "id": "g2",
+                "kind": "line",
+                "x": 0,
+                "y": 8,
+                "x2": 4,
+                "y2": 8
+              },
+              {
+                "id": "g3",
+                "kind": "line",
+                "x": 4,
+                "y": 6,
+                "x2": 12,
+                "y2": 1
+              },
+              {
+                "id": "g4",
+                "kind": "line",
+                "x": 4,
+                "y": 10,
+                "x2": 12,
+                "y2": 15
+              },
+              {
+                "id": "g5",
+                "kind": "polygon",
+                "points": [
+                  {
+                    "x": 9,
+                    "y": 14
+                  },
+                  {
+                    "x": 12,
+                    "y": 15
+                  },
+                  {
+                    "x": 10,
+                    "y": 12
+                  }
+                ]
+              }
+            ],
+            "pins": [
+              {
+                "number": "1",
+                "x": -5,
+                "y": 8,
+                "side": "left"
+              },
+              {
+                "number": "2",
+                "x": 12,
+                "y": -4,
+                "side": "top"
+              },
+              {
+                "number": "3",
+                "x": 12,
+                "y": 20,
+                "side": "bottom"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "format_version": "1.0",
+    "component_code": "DEMO_IC",
+    "name": "Двухсекционная микросхема — вымышленная",
+    "category": "Синтетические микросхемы",
+    "positional_prefix": "DA",
+    "physical_pins": [
+      {
+        "number": "1"
+      },
+      {
+        "number": "2"
+      },
+      {
+        "number": "3"
+      },
+      {
+        "number": "4"
+      },
+      {
+        "number": "5"
+      },
+      {
+        "number": "6"
+      },
+      {
+        "number": "7"
+      },
+      {
+        "number": "8"
+      }
+    ],
+    "variants": [
+      {
+        "variant_code": "01",
+        "name": "Основной",
+        "sections": [
+          {
+            "section_id": "BODY",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "rectangle",
+                "x": 0,
+                "y": 0,
+                "width": 30,
+                "height": 35
+              },
+              {
+                "id": "g1",
+                "kind": "text",
+                "x": 15,
+                "y": 6,
+                "text": "DEMO",
+                "align": "center"
+              }
+            ],
+            "pins": [
+              {
+                "number": "1",
+                "x": -5,
+                "y": 10,
+                "side": "left"
+              },
+              {
+                "number": "2",
+                "x": -5,
+                "y": 15,
+                "side": "left"
+              },
+              {
+                "number": "3",
+                "x": 35,
+                "y": 10,
+                "side": "right"
+              },
+              {
+                "number": "4",
+                "x": 15,
+                "y": -5,
+                "side": "top"
+              },
+              {
+                "number": "5",
+                "x": -5,
+                "y": 20,
+                "side": "left"
+              },
+              {
+                "number": "6",
+                "x": -5,
+                "y": 25,
+                "side": "left"
+              },
+              {
+                "number": "7",
+                "x": 35,
+                "y": 25,
+                "side": "right"
+              },
+              {
+                "number": "8",
+                "x": 15,
+                "y": 40,
+                "side": "bottom"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "variant_code": "02",
+        "name": "Разнесённые A / B / питание",
+        "sections": [
+          {
+            "section_id": "A",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "rectangle",
+                "x": 0,
+                "y": 0,
+                "width": 25,
+                "height": 20
+              },
+              {
+                "id": "g1",
+                "kind": "text",
+                "x": 12.5,
+                "y": 6,
+                "text": "A",
+                "align": "center"
+              }
+            ],
+            "pins": [
+              {
+                "number": "1",
+                "x": -5,
+                "y": 7.5,
+                "side": "left"
+              },
+              {
+                "number": "2",
+                "x": -5,
+                "y": 12.5,
+                "side": "left"
+              },
+              {
+                "number": "3",
+                "x": 30,
+                "y": 10,
+                "side": "right"
+              }
+            ]
+          },
+          {
+            "section_id": "B",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "rectangle",
+                "x": 0,
+                "y": 0,
+                "width": 25,
+                "height": 20
+              },
+              {
+                "id": "g1",
+                "kind": "text",
+                "x": 12.5,
+                "y": 6,
+                "text": "B",
+                "align": "center"
+              }
+            ],
+            "pins": [
+              {
+                "number": "5",
+                "x": -5,
+                "y": 7.5,
+                "side": "left"
+              },
+              {
+                "number": "6",
+                "x": -5,
+                "y": 12.5,
+                "side": "left"
+              },
+              {
+                "number": "7",
+                "x": 30,
+                "y": 10,
+                "side": "right"
+              }
+            ]
+          },
+          {
+            "section_id": "POWER",
+            "graphics": [
+              {
+                "id": "g0",
+                "kind": "rectangle",
+                "x": 0,
+                "y": 0,
+                "width": 25,
+                "height": 16
+              },
+              {
+                "id": "g1",
+                "kind": "text",
+                "x": 12.5,
+                "y": 7,
+                "text": "Питание",
+                "align": "center"
+              }
+            ],
+            "pins": [
+              {
+                "number": "4",
+                "x": 12.5,
+                "y": -5,
+                "side": "top"
+              },
+              {
+                "number": "8",
+                "x": 12.5,
+                "y": 21,
+                "side": "bottom"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

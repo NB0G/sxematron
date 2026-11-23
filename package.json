@@ -1,0 +1,46 @@
+{
+  "name": "gost-schematic",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k \"node --import tsx --watch apps/server/src/index.ts\" \"vite --host 127.0.0.1\"",
+    "build": "tsc -p tsconfig.server.json && vite build",
+    "start": "node dist/apps/server/src/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build",
+    "prebuild": "node --import tsx scripts/compile-validators.ts",
+    "benchmark": "node --import tsx scripts/benchmark.ts",
+    "test:browser": "node tests/browser.mjs"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@fastify/static": "^8.0.0",
+    "@mui/material": "^7.0.0",
+    "ajv": "^8.17.1",
+    "elkjs": "^0.11.0",
+    "fastify": "^5.0.0",
+    "fflate": "^0.8.2",
+    "opentype.js": "^1.3.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/opentype.js": "^1.3.8",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.0.0",
+    "playwright": "^1.64.1",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0",
+    "esbuild": "^0.28.2"
+  }
+}

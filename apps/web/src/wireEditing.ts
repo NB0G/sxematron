@@ -1,0 +1,6 @@
+import type {Point} from '../../../packages/core/src/types.js';
+const same=(a:Point,b:Point)=>a.x===b.x&&a.y===b.y;
+export function simplifyOrthogonal(points:Point[]):Point[]{const out:Point[]=[];for(const p of points){if(out.length&&same(out[out.length-1],p))continue;out.push({...p});while(out.length>=3){const a=out[out.length-3],b=out[out.length-2],c=out[out.length-1];if((a.x===b.x&&b.x===c.x)||(a.y===b.y&&b.y===c.y))out.splice(out.length-2,1);else break;}}return out;}
+/** Preserve fixed terminal endpoints and insert doglegs around a manually moved bend. */
+export function moveWireVertex(points:Point[],index:number,target:Point):Point[]{if(index<=0||index>=points.length-1)return points.map(p=>({...p}));const prev=points[index-1],old=points[index],next=points[index+1];const before=prev.x===old.x?{x:prev.x,y:target.y}:{x:target.x,y:prev.y};const after=next.x===old.x?{x:next.x,y:target.y}:{x:target.x,y:next.y};return simplifyOrthogonal([...points.slice(0,index),before,target,after,...points.slice(index+1)]);}
+export function removeWireVertex(points:Point[],index:number):Point[]{if(index<=0||index>=points.length-1)return points;const prev=points[index-1],next=points[index+1];return simplifyOrthogonal([...points.slice(0,index),...(prev.x!==next.x&&prev.y!==next.y?[{x:next.x,y:prev.y}]:[]),...points.slice(index+1)]);}

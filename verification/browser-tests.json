@@ -1,0 +1,19 @@
+{
+  "checks": [
+    "production server + CSP + library + JSON import",
+    "multisheet navigation and portable outlined SVG ZIP download",
+    "mouse drag persists fixed mm coordinates and undo restores position",
+    "manual wire geometry survives orthogonal edit and JSON round trip",
+    "invalid pin import is rejected without replacing current document",
+    "library component can be added manually to an existing scheme",
+    "manual electrical net editor uses physical pin numbers",
+    "constructor JSON import + graphical circle + library persistence",
+    "library search/preview and generated current catalog",
+    "theme toggle and mobile viewing without page overflow",
+    "offline runtime makes no external requests and has no JavaScript/CSP errors"
+  ],
+  "pageErrors": [],
+  "externalRequests": [],
+  "consoleErrors": [],
+  "status": "passed"
+}

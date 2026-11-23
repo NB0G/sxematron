@@ -1,0 +1,73 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> gost-schematic@1.0.0 check
+> npm run typecheck && npm test && npm run build
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> gost-schematic@1.0.0 typecheck
+> tsc --noEmit
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> gost-schematic@1.0.0 test
+> node --import tsx --test tests/*.test.ts
+
+✔ every section of one physical component is rendered across pages with one designator (126.220082ms)
+✔ manual drag and JSON round trip preserve electrical graph and fixed positions (28.734493ms)
+✔ automatic layout and routes are deterministic and do not mutate input (45.241257ms)
+✔ locked anchors and valid manual routes survive reimport; disconnected moved route is rejected (4.568023ms)
+✔ locked route fragments must form one connected tree, not merely touch each terminal (0.710138ms)
+✔ wire, label and automatic intersheet rendering preserve exactly the same terminal sets (2.190706ms)
+✔ repeated stages isolate local nets and join only through explicit shared ports (0.760534ms)
+✔ unknown models, variants, sections, physical pins and duplicate-net membership block generation (0.748557ms)
+✔ hostile primitives, extra pin assignments, nonfinite coordinates and excessive nesting fail validation (1.995963ms)
+✔ A3 exports are portable outlined SVG or embedded editable text and multisheet ZIP (69.353003ms)
+✔ renderer escapes user text and preserves physical pin numbers without executing markup (3.406786ms)
+✔ existing designators persist and new instances use vacant numbers until explicit renumber (0.175174ms)
+✔ group-relative fixed positions are absolute on the page and survive serialization (0.925803ms)
+✔ a hard group anchor that conflicts with the title block is diagnosed instead of silently relocated (16.931114ms)
+✔ crossing wire nets remain electrically separate and do not receive a junction dot (1.688219ms)
+✔ standalone JSON validators work with string code generation disabled by CSP (91.495968ms)
+✔ manual vertex edits preserve endpoints and orthogonal electrical routes (1.52868ms)
+✔ OpenGOST physical uppercase letter height is calibrated to 3.5 mm (5.700847ms)
+✔ explicit renumber follows placed page order and single sheet export retains original number (4.163545ms)
+✔ A3 frame, labels, Type B outlines and routed geometry match reviewed golden SVG (185.080959ms)
+✔ API creates, edits, catalogs, deletes and never reuses physical component codes (130.974825ms)
+✔ bulk import validates every record before writing and requires explicit replacement (18.838824ms)
+✔ restart preserves components and backup includes WAL commits; database stores no schemes (29.3579ms)
+✔ hostile fields, malformed JSON and unknown documents are rejected (13.990559ms)
+✔ JSON library export preserves deleted-code reservations on a fresh install (24.500923ms)
+✔ initial seed is applied once and never restores a deliberately emptied library (21.43511ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 809.424964
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> gost-schematic@1.0.0 prebuild
+> node --import tsx scripts/compile-validators.ts
+
+Generated standalone validators: 336748 bytes; runtime eval disabled.
+
+> gost-schematic@1.0.0 build
+> tsc -p tsconfig.server.json && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 939 modules transformed.
+rendering chunks...
+computing gzip size...
+../../dist/web/index.html                     0.54 kB │ gzip:   0.40 kB
+../../dist/web/assets/index-Dh8R86hK.css      6.20 kB │ gzip:   1.90 kB
+../../dist/web/assets/index-D-TVpscg.js   2,531.09 kB │ gzip: 756.22 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 14.76s

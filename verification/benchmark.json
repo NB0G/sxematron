@@ -1,0 +1,46 @@
+{
+  "runAt": "2026-10-20T02:21:04.213Z",
+  "node": "v24.19.0",
+  "platform": "linux",
+  "arch": "x64",
+  "notes": [
+    "Measured in the development environment without Docker CPU/memory limits; timings are not a guarantee for a 2-core host.",
+    "Four physical pins per component; every pin belongs to exactly one 2-terminal net; groups/sections assigned pages but positions automatic.",
+    "Label reference validates the agreed scale; auto-wire stress deliberately contains cyclic feedback and may report routing limitations.",
+    "Memory figures are process RSS; peak includes previous benchmark scenarios in the same process."
+  ],
+  "results": [
+    {
+      "name": "reference-500-components-1000-label-nets-20-A3",
+      "components": 500,
+      "nets": 1000,
+      "requestedSheets": 20,
+      "resultSheets": 20,
+      "placedSections": 500,
+      "routes": 2000,
+      "labels": 2000,
+      "elapsedMs": 1464.77,
+      "rssMiB": 235.04,
+      "peakRssMiB": 235.04,
+      "heapUsedMiB": 100.11,
+      "issues": {}
+    },
+    {
+      "name": "wire-stress-100-components-200-auto-nets-4-A3",
+      "components": 100,
+      "nets": 200,
+      "requestedSheets": 4,
+      "resultSheets": 4,
+      "placedSections": 100,
+      "routes": 320,
+      "labels": 240,
+      "elapsedMs": 344.3,
+      "rssMiB": 325.17,
+      "peakRssMiB": 325.29,
+      "heapUsedMiB": 155.56,
+      "issues": {
+        "warning:AUTO_LABEL_FALLBACK": 72
+      }
+    }
+  ]
+}

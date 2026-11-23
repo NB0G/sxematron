@@ -1,0 +1,158 @@
+import { pointOnSegment, round, same, sectionBounds, pinDirection } from './geometry.js';
+import { DRAWING_FONT_FAMILY, DRAWING_FONT_SCALE, parseDrawingFont, outlineSvgText, embedDrawingFont } from './font.js';
+import { FONT_BASE64 } from './font-data.js';
+import { strToU8, zipSync } from 'fflate';
+export const escapeXml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+const attr = (v) => escapeXml(v);
+const n = (v) => round(v ?? 0);
+function text(x, y, value, size = 3.5, anchor = 'start', extra = '') { return `<text x="${n(x)}" y="${n(y)}" font-size="${n(size * DRAWING_FONT_SCALE)}" text-anchor="${anchor}" fill="#111" stroke="none" ${extra}>${escapeXml(value)}</text>`; }
+export function renderPrimitive(p) { const transform = `${p.rotation ? ` rotate(${p.rotation})` : ''}${p.mirror ? ' scale(-1 1)' : ''}`; let s = ''; switch (p.kind) {
+    case 'line':
+        s = `<line x1="${n(p.x)}" y1="${n(p.y)}" x2="${n(p.x2)}" y2="${n(p.y2)}"/>`;
+        break;
+    case 'rectangle':
+        s = `<rect x="${n(p.x)}" y="${n(p.y)}" width="${n(p.width)}" height="${n(p.height)}"/>`;
+        break;
+    case 'circle':
+        s = `<circle cx="${n(p.x)}" cy="${n(p.y)}" r="${n(p.r)}"/>`;
+        break;
+    case 'arc': {
+        const r = p.r ?? 1, a = (p.start ?? 0) * Math.PI / 180, b = (p.end ?? 180) * Math.PI / 180;
+        const x = p.x ?? 0, y = p.y ?? 0;
+        const span = (p.end ?? 180) - (p.start ?? 0);
+        s = `<path d="M ${n(x + r * Math.cos(a))} ${n(y + r * Math.sin(a))} A ${r} ${r} 0 ${Math.abs(span) > 180 ? 1 : 0} ${span >= 0 ? 1 : 0} ${n(x + r * Math.cos(b))} ${n(y + r * Math.sin(b))}"/>`;
+        break;
+    }
+    case 'polyline':
+    case 'polygon':
+        s = `<${p.kind} points="${(p.points ?? []).map(q => `${n(q.x)},${n(q.y)}`).join(' ')}"/>`;
+        break;
+    case 'text':
+        s = text(p.x ?? 0, p.y ?? 0, p.text, 3.5, p.align === 'center' ? 'middle' : p.align === 'right' ? 'end' : 'start');
+        break;
+    case 'group':
+        s = `<g transform="translate(${n(p.x)} ${n(p.y)})">${(p.children ?? []).map(renderPrimitive).join('')}</g>`;
+        break;
+} return `<g${transform ? ` transform="${transform.trim()}"` : ''}>${s}</g>`; }
+function renderSection(s, interactive) {
+    const attrs = interactive ? ` data-section-key="${attr(s.key)}" data-instance-id="${attr(s.instance.id)}" data-section-id="${attr(s.section.section_id)}"` : '';
+    let body = s.section.graphics.map(renderPrimitive).join('');
+    for (const p of s.section.pins) {
+        const d = { left: { x: 1, y: 0 }, right: { x: -1, y: 0 }, top: { x: 0, y: 1 }, bottom: { x: 0, y: -1 } }[p.side], l = p.length ?? 5;
+        body += `<line x1="${p.x}" y1="${p.y}" x2="${n(p.x + d.x * l)}" y2="${n(p.y + d.y * l)}"/>`;
+        const off = p.side === 'left' ? { x: 1, y: -1 } : p.side === 'right' ? { x: -1, y: -1 } : p.side === 'top' ? { x: 1, y: 2 } : { x: 1, y: -1 };
+        body += text(p.x + off.x, p.y + off.y, p.number, 2.5, p.side === 'right' ? 'end' : 'start');
+        if (interactive)
+            body += `<circle cx="${p.x}" cy="${p.y}" r="1.4" fill="transparent" stroke="none" data-pin-number="${attr(p.number)}" data-instance-id="${attr(s.instance.id)}"/>`;
+    }
+    const hit = sectionBounds(s.section, 0, false, s.instance);
+    const suffix = s.section.section_id === 'BODY' ? '' : '.' + s.section.section_id;
+    body += text(0, -4, (s.instance.designator ?? s.instance.id) + suffix, 3.5);
+    if (s.instance.value)
+        body += text(0, -8, s.instance.value, 3.5);
+    return `<g${attrs} transform="translate(${n(s.position.x)} ${n(s.position.y)}) rotate(${s.rotation}) scale(${s.mirror ? -1 : 1} 1)"${interactive ? ' class="schematic-section"' : ''}>${interactive ? `<rect x="${hit.x - 1}" y="${hit.y - 1}" width="${hit.right - hit.x + 2}" height="${hit.bottom - hit.y + 2}" fill="transparent" stroke="none"/>` : ''}${body}</g>`;
+}
+function frame(res, sheetId) {
+    const d = res.schematic.document, number = res.schematic.sheets.findIndex(s => s.id === sheetId) + 1, count = res.schematic.sheets.length;
+    let s = `<rect x="20" y="5" width="395" height="287" stroke-width="0.7"/><rect x="230" y="237" width="185" height="55" stroke-width="0.7"/>`;
+    const line = (x1, y1, x2, y2, w = .35) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${w}"/>`;
+    for (const y of [244, 259, 274, 282])
+        s += line(230, y, 415, y);
+    for (const x of [247, 270, 287, 297])
+        s += line(x, 259, x, 292);
+    s += line(297, 237, 297, 292);
+    s += line(367, 259, 367, 292);
+    s += line(391, 259, 391, 274);
+    s += line(367, 266, 415, 266);
+    s += text(332, 242, d.designation, 3.5, 'middle');
+    s += text(332, 251, d.title, 3.5, 'middle');
+    s += text(332, 257, 'Схема электрическая принципиальная', 2.5, 'middle');
+    s += text(231, 264, 'Разраб.', 2.5) + text(249, 264, d.author, 2.5) + text(231, 272, 'Пров.', 2.5) + text(249, 272, d.checked, 2.5) + text(231, 279, 'Утв.', 2.5) + text(249, 279, d.approved, 2.5) + text(231, 287, 'Дата', 2.5) + text(249, 287, d.date, 2.5);
+    s += text(379, 264, 'Лист', 2.5, 'middle') + text(403, 264, 'Листов', 2.5, 'middle') + text(379, 272, number, 3.5, 'middle') + text(403, 272, count, 3.5, 'middle') + text(332, 279, d.organization, 3.5, 'middle') + text(332, 289, 'Формат А3', 2.5, 'middle');
+    return s;
+}
+function junctions(routes) {
+    const out = [];
+    const nets = new Set(routes.map(r => r.net_id));
+    for (const net of nets) {
+        const rs = routes.filter(r => r.net_id === net);
+        const segments = rs.flatMap(r => r.points.slice(1).map((b, i) => [r.points[i], b]));
+        const candidates = rs.flatMap(r => r.points);
+        for (let i = 0; i < segments.length; i++)
+            for (let j = i + 1; j < segments.length; j++) {
+                const [a, b] = segments[i], [c, d] = segments[j];
+                if ((a.x === b.x) !== (c.x === d.x)) {
+                    const p = a.x === b.x ? { x: a.x, y: c.y } : { x: c.x, y: a.y };
+                    if (pointOnSegment(p, a, b) && pointOnSegment(p, c, d))
+                        candidates.push(p);
+                }
+            }
+        for (const p of candidates) {
+            const directions = new Set();
+            for (const [a, b] of segments)
+                if (pointOnSegment(p, a, b)) {
+                    if (a.x < p.x || b.x < p.x)
+                        directions.add('L');
+                    if (a.x > p.x || b.x > p.x)
+                        directions.add('R');
+                    if (a.y < p.y || b.y < p.y)
+                        directions.add('U');
+                    if (a.y > p.y || b.y > p.y)
+                        directions.add('D');
+                }
+            if (directions.size >= 3 && !out.some(a => same(a, p)))
+                out.push(p);
+        }
+    }
+    return out.map(p => `<circle cx="${p.x}" cy="${p.y}" r="0.8" fill="#111" stroke="none"/>`).join('');
+}
+export function renderSheet(res, sheetId, options = {}) {
+    const inter = !!options.interactive, rs = res.routes.filter(r => r.sheet_id === sheetId);
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" width="420mm" height="297mm" viewBox="0 0 420 297" role="img" aria-label="${attr(res.schematic.document.title)}" font-family="${DRAWING_FONT_FAMILY}" fill="none" stroke="#111" stroke-width="0.35" stroke-linecap="round" stroke-linejoin="round"><title>${escapeXml(res.schematic.document.title)}</title><rect x="0" y="0" width="420" height="297" fill="white" stroke="none"/>${frame(res, sheetId)}`;
+    for (const r of rs) {
+        const points = r.points.map(p => `${n(p.x)},${n(p.y)}`).join(' ');
+        if (inter)
+            s += `<polyline points="${points}" stroke="transparent" stroke-width="2" data-route-id="${attr(r.id)}" data-net-id="${attr(r.net_id)}" class="schematic-route"/>`;
+        s += `<polyline points="${points}"${inter ? ` data-route-id="${attr(r.id)}" data-net-id="${attr(r.net_id)}" class="schematic-route"` : ''}/>`;
+    }
+    s += junctions(rs);
+    for (const a of res.sections.filter(a => a.sheet_id === sheetId))
+        s += renderSection(a, inter);
+    for (const label of res.labels.filter(a => a.sheet_id === sheetId)) {
+        const extra = inter ? `data-label-net="${attr(label.net_id)}" data-instance-id="${attr(label.pin?.instance_id)}" data-pin-number="${attr(label.pin?.number)}"` : '';
+        if (label.role === 'ground') {
+            s += `<path d="M ${label.point.x} ${label.point.y} h 3 m -5 1.25 h 7 m -6 1.25 h 5 m -4 1.25 h 3"/>`;
+        }
+        else {
+            s += `<path d="M ${label.point.x - 2} ${label.point.y - 1.25} L ${label.point.x} ${label.point.y} L ${label.point.x - 2} ${label.point.y + 1.25}"/>`;
+        }
+        const section = res.sections.find(s => s.instance.id === label.pin?.instance_id && s.section.pins.some(p => p.number === label.pin?.number));
+        const pin = section?.section.pins.find(p => p.number === label.pin?.number);
+        const left = section && pin && pinDirection(section, pin).x < 0;
+        s += text(label.point.x + (left ? -1 : 1), label.point.y - 1.5, label.text, 3.5, left ? 'end' : 'start', extra);
+    }
+    s += '</svg>';
+    return options.outlineFont ? outlineSvgText(s, options.outlineFont) : s;
+}
+let parsedFont;
+function font() { if (!parsedFont) {
+    const binary = atob(FONT_BASE64), u = new Uint8Array(binary.length);
+    for (let i = 0; i < u.length; i++)
+        u[i] = binary.charCodeAt(i);
+    parsedFont = parseDrawingFont(u.buffer);
+} return parsedFont; }
+export function exportSheets(res, options = {}) {
+    if (res.issues.some(i => i.severity === 'error'))
+        throw new Error('Экспорт заблокирован: исправьте ошибки схемы и непроложенные маршруты');
+    const sheets = options.sheetId ? res.schematic.sheets.filter(s => s.id === options.sheetId) : res.schematic.sheets, files = {};
+    if (!sheets.length)
+        throw new Error('Лист не найден');
+    for (let i = 0; i < sheets.length; i++) {
+        let svg = renderSheet(res, sheets[i].id);
+        svg = options.textMode === 'editable' ? embedDrawingFont(svg, FONT_BASE64) : outlineSvgText(svg, font());
+        files[`sheet_${String(res.schematic.sheets.findIndex(s => s.id === sheets[i].id) + 1).padStart(2, '0')}.svg`] = strToU8('<?xml version="1.0" encoding="UTF-8"?>\n' + svg);
+    }
+    return sheets.length === 1 ? { name: Object.keys(files)[0], bytes: Object.values(files)[0], mime: 'image/svg+xml' } : { name: 'sheets_A3.zip', bytes: zipSync(files, { level: 6, mtime: new Date(1980, 0, 1) }), mime: 'application/zip' };
+}
+export function componentPreview(d, variantCode, sectionId) { const v = d.variants.find(v => v.variant_code === variantCode) ?? d.variants[0]; if (!v)
+    return ''; const sections = sectionId ? v.sections.filter(s => s.section_id === sectionId) : v.sections; let cursor = 0; const items = sections.map(section => { const b = sectionBounds(section); const position = { x: cursor - b.x, y: -b.y }; cursor += b.right - b.x + 20; return { section, position, height: b.bottom - b.y }; }); const width = Math.max(30, cursor - 10), height = Math.max(30, ...items.map(i => i.height + 20)); return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 ${width + 10} ${height}" font-family="${DRAWING_FONT_FAMILY}" fill="none" stroke="currentColor" stroke-width="0.35">${items.map(({ section, position }) => renderSection({ key: section.section_id, instance: { id: 'preview', component_code: d.component_code, variant_code: v.variant_code, designator: d.positional_prefix + '1', sections: {} }, section, placement: {}, sheet_id: '', position, rotation: 0, mirror: false, width: width, height: height }, false)).join('')}</svg>`; }

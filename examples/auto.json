@@ -1,0 +1,150 @@
+{
+  "format_version": "1.0",
+  "document": {
+    "title": "Автоматическая компоновка",
+    "designation": "DEMO.0001.Э3",
+    "author": "Тестовый пример",
+    "organization": "ГОСТ Схематика"
+  },
+  "sheets": [
+    {
+      "id": "sheet_1"
+    }
+  ],
+  "groups": [],
+  "components": [
+    {
+      "id": "r_input",
+      "component_code": "GEN_R",
+      "variant_code": "01",
+      "sections": {},
+      "value": "10 кОм",
+      "tag": "Сигнальный тракт"
+    },
+    {
+      "id": "amp",
+      "component_code": "DEMO_IC",
+      "variant_code": "02",
+      "sections": {},
+      "tag": "Сигнальный тракт"
+    },
+    {
+      "id": "c_feedback",
+      "component_code": "GEN_C",
+      "variant_code": "01",
+      "sections": {},
+      "value": "100 нФ",
+      "tag": "Сигнальный тракт"
+    }
+  ],
+  "nets": [
+    {
+      "id": "INPUT",
+      "render": "label",
+      "pins": [
+        {
+          "instance_id": "r_input",
+          "number": "1"
+        }
+      ],
+      "name": "Вход"
+    },
+    {
+      "id": "SIGNAL",
+      "render": "wire",
+      "pins": [
+        {
+          "instance_id": "r_input",
+          "number": "2"
+        },
+        {
+          "instance_id": "amp",
+          "number": "2"
+        }
+      ]
+    },
+    {
+      "id": "OUTPUT",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "amp",
+          "number": "3"
+        },
+        {
+          "instance_id": "amp",
+          "number": "6"
+        }
+      ]
+    },
+    {
+      "id": "FEEDBACK",
+      "render": "wire",
+      "pins": [
+        {
+          "instance_id": "amp",
+          "number": "1"
+        },
+        {
+          "instance_id": "c_feedback",
+          "number": "1"
+        }
+      ]
+    },
+    {
+      "id": "RETURN",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "c_feedback",
+          "number": "2"
+        },
+        {
+          "instance_id": "amp",
+          "number": "5"
+        }
+      ]
+    },
+    {
+      "id": "VCC",
+      "render": "label",
+      "pins": [
+        {
+          "instance_id": "amp",
+          "number": "4"
+        }
+      ],
+      "name": "+5 В",
+      "role": "positive_supply"
+    },
+    {
+      "id": "GND",
+      "render": "label",
+      "pins": [
+        {
+          "instance_id": "amp",
+          "number": "8"
+        }
+      ],
+      "name": "Общий",
+      "role": "ground"
+    },
+    {
+      "id": "OUT",
+      "render": "label",
+      "pins": [
+        {
+          "instance_id": "amp",
+          "number": "7"
+        }
+      ],
+      "name": "Выход"
+    }
+  ],
+  "layout": {
+    "mode": "mixed",
+    "unit": "mm",
+    "routes": [],
+    "labels": []
+  }
+}

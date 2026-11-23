@@ -1,0 +1,362 @@
+{
+  "format_version": "1.0",
+  "document": {
+    "title": "Демонстрационный тракт",
+    "designation": "DEMO.0001.Э3",
+    "author": "Тестовый пример",
+    "organization": "ГОСТ Схематика"
+  },
+  "sheets": [
+    {
+      "id": "sheet_1",
+      "title": "Сигнал"
+    },
+    {
+      "id": "sheet_2",
+      "title": "Питание"
+    }
+  ],
+  "groups": [],
+  "components": [
+    {
+      "id": "r_input",
+      "component_code": "GEN_R",
+      "variant_code": "01",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 60,
+            "y": 65
+          },
+          "locked": true
+        }
+      },
+      "value": "10 кОм",
+      "designator": "R1",
+      "definition_fingerprint": "a8a73aca"
+    },
+    {
+      "id": "amp",
+      "component_code": "DEMO_IC",
+      "variant_code": "02",
+      "sections": {
+        "A": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 125,
+            "y": 65
+          },
+          "locked": true
+        },
+        "B": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 245,
+            "y": 65
+          },
+          "locked": true
+        },
+        "POWER": {
+          "sheet_id": "sheet_2",
+          "position": {
+            "x": 90,
+            "y": 70
+          },
+          "locked": true
+        }
+      },
+      "designator": "DA1",
+      "definition_fingerprint": "66a95684"
+    },
+    {
+      "id": "c_feedback",
+      "component_code": "GEN_C",
+      "variant_code": "01",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 190,
+            "y": 125
+          },
+          "locked": true
+        }
+      },
+      "value": "100 нФ",
+      "designator": "C1",
+      "definition_fingerprint": "a583456f"
+    }
+  ],
+  "nets": [
+    {
+      "id": "INPUT",
+      "render": "label",
+      "pins": [
+        {
+          "instance_id": "r_input",
+          "number": "1"
+        }
+      ],
+      "name": "Вход"
+    },
+    {
+      "id": "SIGNAL",
+      "render": "wire",
+      "pins": [
+        {
+          "instance_id": "r_input",
+          "number": "2"
+        },
+        {
+          "instance_id": "amp",
+          "number": "2"
+        }
+      ]
+    },
+    {
+      "id": "OUTPUT",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "amp",
+          "number": "3"
+        },
+        {
+          "instance_id": "amp",
+          "number": "6"
+        }
+      ]
+    },
+    {
+      "id": "FEEDBACK",
+      "render": "wire",
+      "pins": [
+        {
+          "instance_id": "amp",
+          "number": "1"
+        },
+        {
+          "instance_id": "c_feedback",
+          "number": "1"
+        }
+      ]
+    },
+    {
+      "id": "RETURN",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "c_feedback",
+          "number": "2"
+        },
+        {
+          "instance_id": "amp",
+          "number": "5"
+        }
+      ]
+    },
+    {
+      "id": "VCC",
+      "render": "label",
+      "pins": [
+        {
+          "instance_id": "amp",
+          "number": "4"
+        }
+      ],
+      "name": "+5 В",
+      "role": "positive_supply"
+    },
+    {
+      "id": "GND",
+      "render": "label",
+      "pins": [
+        {
+          "instance_id": "amp",
+          "number": "8"
+        }
+      ],
+      "name": "Общий",
+      "role": "ground"
+    },
+    {
+      "id": "OUT",
+      "render": "label",
+      "pins": [
+        {
+          "instance_id": "amp",
+          "number": "7"
+        }
+      ],
+      "name": "Выход"
+    }
+  ],
+  "layout": {
+    "mode": "mixed",
+    "unit": "mm",
+    "routes": [
+      {
+        "id": "label_INPUT_r_input_1",
+        "net_id": "INPUT",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 55,
+            "y": 67.5
+          },
+          {
+            "x": 47.5,
+            "y": 67.5
+          }
+        ]
+      },
+      {
+        "id": "route_SIGNAL_sheet_1_0",
+        "net_id": "SIGNAL",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 75,
+            "y": 67.5
+          },
+          {
+            "x": 112.5,
+            "y": 67.5
+          },
+          {
+            "x": 112.5,
+            "y": 77.5
+          },
+          {
+            "x": 120,
+            "y": 77.5
+          }
+        ]
+      },
+      {
+        "id": "route_OUTPUT_sheet_1_0",
+        "net_id": "OUTPUT",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 155,
+            "y": 75
+          },
+          {
+            "x": 212.5,
+            "y": 75
+          },
+          {
+            "x": 212.5,
+            "y": 77.5
+          },
+          {
+            "x": 240,
+            "y": 77.5
+          }
+        ]
+      },
+      {
+        "id": "route_FEEDBACK_sheet_1_0",
+        "net_id": "FEEDBACK",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 120,
+            "y": 72.5
+          },
+          {
+            "x": 117.5,
+            "y": 72.5
+          },
+          {
+            "x": 117.5,
+            "y": 127.5
+          },
+          {
+            "x": 185,
+            "y": 127.5
+          }
+        ]
+      },
+      {
+        "id": "route_RETURN_sheet_1_0",
+        "net_id": "RETURN",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 205,
+            "y": 127.5
+          },
+          {
+            "x": 232.5,
+            "y": 127.5
+          },
+          {
+            "x": 232.5,
+            "y": 87.5
+          },
+          {
+            "x": 215,
+            "y": 87.5
+          },
+          {
+            "x": 215,
+            "y": 72.5
+          },
+          {
+            "x": 240,
+            "y": 72.5
+          }
+        ]
+      },
+      {
+        "id": "label_VCC_amp_4",
+        "net_id": "VCC",
+        "sheet_id": "sheet_2",
+        "points": [
+          {
+            "x": 102.5,
+            "y": 65
+          },
+          {
+            "x": 102.5,
+            "y": 57.5
+          }
+        ]
+      },
+      {
+        "id": "label_GND_amp_8",
+        "net_id": "GND",
+        "sheet_id": "sheet_2",
+        "points": [
+          {
+            "x": 102.5,
+            "y": 91
+          },
+          {
+            "x": 102.5,
+            "y": 98.5
+          }
+        ]
+      },
+      {
+        "id": "label_OUT_amp_7",
+        "net_id": "OUT",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 275,
+            "y": 75
+          },
+          {
+            "x": 282.5,
+            "y": 75
+          }
+        ]
+      }
+    ],
+    "labels": []
+  }
+}

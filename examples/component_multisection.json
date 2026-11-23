@@ -1,0 +1,235 @@
+{
+  "format_version": "1.0",
+  "component_code": "DEMO_IC",
+  "name": "Двухсекционная микросхема — вымышленная",
+  "category": "Синтетические микросхемы",
+  "positional_prefix": "DA",
+  "physical_pins": [
+    {
+      "number": "1"
+    },
+    {
+      "number": "2"
+    },
+    {
+      "number": "3"
+    },
+    {
+      "number": "4"
+    },
+    {
+      "number": "5"
+    },
+    {
+      "number": "6"
+    },
+    {
+      "number": "7"
+    },
+    {
+      "number": "8"
+    }
+  ],
+  "variants": [
+    {
+      "variant_code": "01",
+      "name": "Основной",
+      "sections": [
+        {
+          "section_id": "BODY",
+          "graphics": [
+            {
+              "id": "g0",
+              "kind": "rectangle",
+              "x": 0,
+              "y": 0,
+              "width": 30,
+              "height": 35
+            },
+            {
+              "id": "g1",
+              "kind": "text",
+              "x": 15,
+              "y": 6,
+              "text": "DEMO",
+              "align": "center"
+            }
+          ],
+          "pins": [
+            {
+              "number": "1",
+              "x": -5,
+              "y": 10,
+              "side": "left"
+            },
+            {
+              "number": "2",
+              "x": -5,
+              "y": 15,
+              "side": "left"
+            },
+            {
+              "number": "3",
+              "x": 35,
+              "y": 10,
+              "side": "right"
+            },
+            {
+              "number": "4",
+              "x": 15,
+              "y": -5,
+              "side": "top"
+            },
+            {
+              "number": "5",
+              "x": -5,
+              "y": 20,
+              "side": "left"
+            },
+            {
+              "number": "6",
+              "x": -5,
+              "y": 25,
+              "side": "left"
+            },
+            {
+              "number": "7",
+              "x": 35,
+              "y": 25,
+              "side": "right"
+            },
+            {
+              "number": "8",
+              "x": 15,
+              "y": 40,
+              "side": "bottom"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "variant_code": "02",
+      "name": "Разнесённые A / B / питание",
+      "sections": [
+        {
+          "section_id": "A",
+          "graphics": [
+            {
+              "id": "g0",
+              "kind": "rectangle",
+              "x": 0,
+              "y": 0,
+              "width": 25,
+              "height": 20
+            },
+            {
+              "id": "g1",
+              "kind": "text",
+              "x": 12.5,
+              "y": 6,
+              "text": "A",
+              "align": "center"
+            }
+          ],
+          "pins": [
+            {
+              "number": "1",
+              "x": -5,
+              "y": 7.5,
+              "side": "left"
+            },
+            {
+              "number": "2",
+              "x": -5,
+              "y": 12.5,
+              "side": "left"
+            },
+            {
+              "number": "3",
+              "x": 30,
+              "y": 10,
+              "side": "right"
+            }
+          ]
+        },
+        {
+          "section_id": "B",
+          "graphics": [
+            {
+              "id": "g0",
+              "kind": "rectangle",
+              "x": 0,
+              "y": 0,
+              "width": 25,
+              "height": 20
+            },
+            {
+              "id": "g1",
+              "kind": "text",
+              "x": 12.5,
+              "y": 6,
+              "text": "B",
+              "align": "center"
+            }
+          ],
+          "pins": [
+            {
+              "number": "5",
+              "x": -5,
+              "y": 7.5,
+              "side": "left"
+            },
+            {
+              "number": "6",
+              "x": -5,
+              "y": 12.5,
+              "side": "left"
+            },
+            {
+              "number": "7",
+              "x": 30,
+              "y": 10,
+              "side": "right"
+            }
+          ]
+        },
+        {
+          "section_id": "POWER",
+          "graphics": [
+            {
+              "id": "g0",
+              "kind": "rectangle",
+              "x": 0,
+              "y": 0,
+              "width": 25,
+              "height": 16
+            },
+            {
+              "id": "g1",
+              "kind": "text",
+              "x": 12.5,
+              "y": 7,
+              "text": "Питание",
+              "align": "center"
+            }
+          ],
+          "pins": [
+            {
+              "number": "4",
+              "x": 12.5,
+              "y": -5,
+              "side": "top"
+            },
+            {
+              "number": "8",
+              "x": 12.5,
+              "y": 21,
+              "side": "bottom"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "format_version": "1.0",
+  "document": {
+    "title": "Три независимых RC-каскада",
+    "designation": "DEMO.0002.Э3"
+  },
+  "sheets": [
+    {
+      "id": "sheet_1"
+    }
+  ],
+  "groups": [],
+  "components": [
+    {
+      "id": "connector",
+      "component_code": "DEMO_CONNECTOR",
+      "variant_code": "01",
+      "sections": {}
+    }
+  ],
+  "nets": [
+    {
+      "id": "COMMON",
+      "render": "label",
+      "pins": [
+        {
+          "instance_id": "connector",
+          "number": "1"
+        }
+      ],
+      "name": "Общая цепь"
+    }
+  ],
+  "templates": [
+    {
+      "id": "RC",
+      "components": [
+        {
+          "id": "r",
+          "component_code": "GEN_R",
+          "variant_code": "01",
+          "sections": {},
+          "value": "10 кОм"
+        },
+        {
+          "id": "c",
+          "component_code": "GEN_C",
+          "variant_code": "01",
+          "sections": {},
+          "value": "100 нФ"
+        }
+      ],
+      "nets": [
+        {
+          "id": "LOCAL",
+          "render": "wire",
+          "pins": [
+            {
+              "instance_id": "r",
+              "number": "2"
+            },
+            {
+              "instance_id": "c",
+              "number": "1"
+            }
+          ]
+        }
+      ],
+      "ports": {
+        "common": [
+          {
+            "instance_id": "c",
+            "number": "2"
+          }
+        ]
+      }
+    }
+  ],
+  "repeat_instances": [
+    {
+      "id": "channel",
+      "template_id": "RC",
+      "count": 3,
+      "connections": {
+        "common": "COMMON"
+      }
+    }
+  ],
+  "layout": {
+    "mode": "mixed",
+    "unit": "mm",
+    "routes": []
+  }
+}

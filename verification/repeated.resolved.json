@@ -1,0 +1,341 @@
+{
+  "format_version": "1.0",
+  "document": {
+    "title": "Три независимых RC-каскада",
+    "designation": "DEMO.0002.Э3"
+  },
+  "sheets": [
+    {
+      "id": "sheet_1"
+    }
+  ],
+  "groups": [],
+  "components": [
+    {
+      "id": "connector",
+      "component_code": "DEMO_CONNECTOR",
+      "variant_code": "01",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 68,
+            "y": 37
+          }
+        }
+      },
+      "designator": "X1",
+      "definition_fingerprint": "8fc25d8a"
+    },
+    {
+      "id": "channel_1_r",
+      "component_code": "GEN_R",
+      "variant_code": "01",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 90,
+            "y": 37.5
+          }
+        }
+      },
+      "value": "10 кОм",
+      "tag": "channel_1_stage",
+      "designator": "R1",
+      "definition_fingerprint": "a8a73aca"
+    },
+    {
+      "id": "channel_1_c",
+      "component_code": "GEN_C",
+      "variant_code": "01",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 140,
+            "y": 37
+          }
+        }
+      },
+      "value": "100 нФ",
+      "tag": "channel_1_stage",
+      "designator": "C1",
+      "definition_fingerprint": "a583456f"
+    },
+    {
+      "id": "channel_2_r",
+      "component_code": "GEN_R",
+      "variant_code": "01",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 200,
+            "y": 37.5
+          }
+        }
+      },
+      "value": "10 кОм",
+      "tag": "channel_2_stage",
+      "designator": "R2",
+      "definition_fingerprint": "a8a73aca"
+    },
+    {
+      "id": "channel_2_c",
+      "component_code": "GEN_C",
+      "variant_code": "01",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 250,
+            "y": 37
+          }
+        }
+      },
+      "value": "100 нФ",
+      "tag": "channel_2_stage",
+      "designator": "C2",
+      "definition_fingerprint": "a583456f"
+    },
+    {
+      "id": "channel_3_r",
+      "component_code": "GEN_R",
+      "variant_code": "01",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 310,
+            "y": 37.5
+          }
+        }
+      },
+      "value": "10 кОм",
+      "tag": "channel_3_stage",
+      "designator": "R3",
+      "definition_fingerprint": "a8a73aca"
+    },
+    {
+      "id": "channel_3_c",
+      "component_code": "GEN_C",
+      "variant_code": "01",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_1",
+          "position": {
+            "x": 360,
+            "y": 37
+          }
+        }
+      },
+      "value": "100 нФ",
+      "tag": "channel_3_stage",
+      "designator": "C3",
+      "definition_fingerprint": "a583456f"
+    }
+  ],
+  "nets": [
+    {
+      "id": "COMMON",
+      "render": "label",
+      "pins": [
+        {
+          "instance_id": "connector",
+          "number": "1"
+        },
+        {
+          "instance_id": "channel_1_c",
+          "number": "2"
+        },
+        {
+          "instance_id": "channel_2_c",
+          "number": "2"
+        },
+        {
+          "instance_id": "channel_3_c",
+          "number": "2"
+        }
+      ],
+      "name": "Общая цепь"
+    },
+    {
+      "id": "channel_1_LOCAL",
+      "render": "wire",
+      "pins": [
+        {
+          "instance_id": "channel_1_r",
+          "number": "2"
+        },
+        {
+          "instance_id": "channel_1_c",
+          "number": "1"
+        }
+      ]
+    },
+    {
+      "id": "channel_2_LOCAL",
+      "render": "wire",
+      "pins": [
+        {
+          "instance_id": "channel_2_r",
+          "number": "2"
+        },
+        {
+          "instance_id": "channel_2_c",
+          "number": "1"
+        }
+      ]
+    },
+    {
+      "id": "channel_3_LOCAL",
+      "render": "wire",
+      "pins": [
+        {
+          "instance_id": "channel_3_r",
+          "number": "2"
+        },
+        {
+          "instance_id": "channel_3_c",
+          "number": "1"
+        }
+      ]
+    }
+  ],
+  "layout": {
+    "mode": "mixed",
+    "unit": "mm",
+    "routes": [
+      {
+        "id": "label_COMMON_connector_1",
+        "net_id": "COMMON",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 63,
+            "y": 42
+          },
+          {
+            "x": 55.5,
+            "y": 42
+          }
+        ]
+      },
+      {
+        "id": "label_COMMON_channel_1_c_2",
+        "net_id": "COMMON",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 155,
+            "y": 39.5
+          },
+          {
+            "x": 162.5,
+            "y": 39.5
+          }
+        ]
+      },
+      {
+        "id": "label_COMMON_channel_2_c_2",
+        "net_id": "COMMON",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 265,
+            "y": 39.5
+          },
+          {
+            "x": 272.5,
+            "y": 39.5
+          }
+        ]
+      },
+      {
+        "id": "label_COMMON_channel_3_c_2",
+        "net_id": "COMMON",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 375,
+            "y": 39.5
+          },
+          {
+            "x": 382.5,
+            "y": 39.5
+          }
+        ]
+      },
+      {
+        "id": "route_channel_1_LOCAL_sheet_1_0",
+        "net_id": "channel_1_LOCAL",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 105,
+            "y": 40
+          },
+          {
+            "x": 127.5,
+            "y": 40
+          },
+          {
+            "x": 127.5,
+            "y": 39.5
+          },
+          {
+            "x": 135,
+            "y": 39.5
+          }
+        ]
+      },
+      {
+        "id": "route_channel_2_LOCAL_sheet_1_0",
+        "net_id": "channel_2_LOCAL",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 215,
+            "y": 40
+          },
+          {
+            "x": 237.5,
+            "y": 40
+          },
+          {
+            "x": 237.5,
+            "y": 39.5
+          },
+          {
+            "x": 245,
+            "y": 39.5
+          }
+        ]
+      },
+      {
+        "id": "route_channel_3_LOCAL_sheet_1_0",
+        "net_id": "channel_3_LOCAL",
+        "sheet_id": "sheet_1",
+        "points": [
+          {
+            "x": 325,
+            "y": 40
+          },
+          {
+            "x": 347.5,
+            "y": 40
+          },
+          {
+            "x": 347.5,
+            "y": 39.5
+          },
+          {
+            "x": 355,
+            "y": 39.5
+          }
+        ]
+      }
+    ]
+  }
+}
