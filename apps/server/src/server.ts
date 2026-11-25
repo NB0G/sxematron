@@ -80,8 +80,8 @@ export async function buildServer(options: ServerOptions = {}) {
       !Array.isArray(body.library) || body.library.length > 10_000 ||
       (body.preview !== undefined && typeof body.preview !== 'boolean') ||
       (body.options !== undefined && (!body.options || typeof body.options !== 'object' || Array.isArray(body.options) ||
-        Object.keys(body.options).some(key=>key!=='reset') || (body.options.reset!==undefined && typeof body.options.reset!=='boolean')))) {
-      throw new ApiError(400,'Передайте объект schematic, массив library (до 10000 компонентов) и, при необходимости, options.reset и preview.');
+        Object.keys(body.options).some(key=>key!=='reset'&&key!=='reflow') || (body.options.reset!==undefined && typeof body.options.reset!=='boolean') || (body.options.reflow!==undefined && typeof body.options.reflow!=='boolean')))) {
+      throw new ApiError(400,'Передайте объект schematic, массив library (до 10000 компонентов) и, при необходимости, options.reset, options.reflow и preview.');
     }
     const controller = new AbortController();
     const disconnect = () => { if (!reply.raw.writableFinished) controller.abort(); };

@@ -4,7 +4,7 @@ import { Worker } from 'node:worker_threads';
 import type { Issue, PlacedSection, Schematic } from '../../../packages/core/src/types.js';
 import type { RoutedSheets } from '../../../packages/core/src/routing.js';
 
-export type BuildRequest = { schematic: unknown; library: unknown[]; options?: {reset?: boolean}; preview?: boolean };
+export type BuildRequest = { schematic: unknown; library: unknown[]; options?: {reset?: boolean; reflow?:boolean}; preview?: boolean };
 export type BuildReply = {ok: true; json: string; routingWorkers: number} | {ok: false; status: number; message: string; issues?: Issue[]};
 type RoutingInput = {schematic:Schematic; sections:PlacedSection[]};
 export type ToWorker =

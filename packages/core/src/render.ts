@@ -1,5 +1,5 @@
 import type {Primitive,Resolved,PlacedSection,ComponentDefinition,Point,WireRoute} from './types.js';
-import {PAGE,pinPosition,pointOnSegment,round,same,sectionBounds,pinDirection} from './geometry.js';
+import {PAGE,pinPosition,pointOnSegment,round,same,sectionBounds,pinDirection,hasTurnedCaption,sectionCaption} from './geometry.js';
 import {DRAWING_FONT_FAMILY,DRAWING_FONT_SCALE,bundledDrawingFont,outlineSvgText,embedDrawingFont} from './font.js';
 import {FONT_BASE64} from './font-data.js';
 import {strToU8,zipSync} from 'fflate';
@@ -9,7 +9,13 @@ const n=(v:number|undefined)=>round(v??0);
 function text(x:number,y:number,value:unknown,size=3.5,anchor='start',extra=''){return `<text x="${n(x)}" y="${n(y)}" font-size="${n(size*DRAWING_FONT_SCALE)}" text-anchor="${anchor}" fill="#111" stroke="none" ${extra}>${escapeXml(value)}</text>`;}
 export function renderPrimitive(p:Primitive):string{const transform=`${p.rotation?` rotate(${p.rotation})`:''}${p.mirror?' scale(-1 1)':''}`;let s='';switch(p.kind){case'line':s=`<line x1="${n(p.x)}" y1="${n(p.y)}" x2="${n(p.x2)}" y2="${n(p.y2)}"/>`;break;case'rectangle':s=`<rect x="${n(p.x)}" y="${n(p.y)}" width="${n(p.width)}" height="${n(p.height)}"/>`;break;case'circle':s=`<circle cx="${n(p.x)}" cy="${n(p.y)}" r="${n(p.r)}"/>`;break;case'arc':{const r=p.r??1,a=(p.start??0)*Math.PI/180,b=(p.end??180)*Math.PI/180;const x=p.x??0,y=p.y??0;const span=(p.end??180)-(p.start??0);s=`<path d="M ${n(x+r*Math.cos(a))} ${n(y+r*Math.sin(a))} A ${r} ${r} 0 ${Math.abs(span)>180?1:0} ${span>=0?1:0} ${n(x+r*Math.cos(b))} ${n(y+r*Math.sin(b))}"/>`;break;}case'polyline':case'polygon':s=`<${p.kind} points="${(p.points??[]).map(q=>`${n(q.x)},${n(q.y)}`).join(' ')}"/>`;break;case'text':s=text(p.x??0,p.y??0,p.text,3.5,p.align==='center'?'middle':p.align==='right'?'end':'start');break;case'group':s=`<g transform="translate(${n(p.x)} ${n(p.y)})">${(p.children??[]).map(renderPrimitive).join('')}</g>`;break;}return `<g${transform?` transform="${transform.trim()}"`:''}>${s}</g>`;}
 function renderSection(s:PlacedSection,interactive:boolean){const attrs=interactive?` data-section-key="${attr(s.key)}" data-instance-id="${attr(s.instance.id)}" data-section-id="${attr(s.section.section_id)}"`:'';let body=s.section.graphics.map(renderPrimitive).join('');for(const p of s.section.pins){const d={left:{x:1,y:0},right:{x:-1,y:0},top:{x:0,y:1},bottom:{x:0,y:-1}}[p.side],l=p.length??5;body+=`<line x1="${p.x}" y1="${p.y}" x2="${n(p.x+d.x*l)}" y2="${n(p.y+d.y*l)}"/>`;const off=p.side==='left'?{x:1,y:-1}:p.side==='right'?{x:-1,y:-1}:p.side==='top'?{x:1,y:2}: {x:1,y:-1};body+=text(p.x+off.x,p.y+off.y,p.number,2.5,p.side==='right'?'end':'start');if(interactive)body+=`<circle cx="${p.x}" cy="${p.y}" r="1.4" fill="transparent" stroke="none" data-pin-number="${attr(p.number)}" data-instance-id="${attr(s.instance.id)}"/>`;}
- const hit=sectionBounds(s.section,0,false,s.instance);const suffix=s.section.section_id==='BODY'?'':'.'+s.section.section_id;body+=text(0,-4,(s.instance.designator??s.instance.id)+suffix,3.5);if(s.instance.value)body+=text(0,-8,s.instance.value,3.5);
+ const hit=sectionBounds(s.section,0,false,s.instance);const suffix=s.section.section_id==='BODY'?'':'.'+s.section.section_id;
+ const label=(s.instance.designator??s.instance.id)+suffix;
+ if(hasTurnedCaption(s.rotation)){
+  const p=sectionCaption(s.section,s.rotation,s.mirror);
+  const inverse=`${s.mirror?'scale(-1 1) ':''}rotate(${-s.rotation})`;
+  body+=`<g transform="${inverse}">${text(p.x,p.y,label)}${s.instance.value?text(p.x,p.y-4,s.instance.value):''}</g>`;
+ }else{body+=text(0,-4,label,3.5);if(s.instance.value)body+=text(0,-8,s.instance.value,3.5);}
  return `<g${attrs} transform="translate(${n(s.position.x)} ${n(s.position.y)}) rotate(${s.rotation}) scale(${s.mirror?-1:1} 1)"${interactive?' class="schematic-section"':''}>${interactive?`<rect x="${hit.x-1}" y="${hit.y-1}" width="${hit.right-hit.x+2}" height="${hit.bottom-hit.y+2}" fill="transparent" stroke="none"/>`:''}${body}</g>`;
 }
 function frame(res:Resolved,sheetId:string){const d=res.schematic.document,number=res.schematic.sheets.findIndex(s=>s.id===sheetId)+1,count=res.schematic.sheets.length;let s=`<rect x="20" y="5" width="395" height="287" stroke-width="0.7"/><rect x="230" y="237" width="185" height="55" stroke-width="0.7"/>`;

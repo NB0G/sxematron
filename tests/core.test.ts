@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createContext, runInContext } from 'node:vm';
 import { transformSync } from 'esbuild';
 import { unzipSync, strFromU8 } from 'fflate';
-import { buildSchematic, emptySchematic, validateComponent, validateSchematic, expandRepeats, pinPosition, pointOnSegment, renderSheet, exportSheets, assignDesignators } from '../packages/core/src/index.js';
+import { buildSchematic, emptySchematic, validateComponent, validateSchematic, expandRepeats, pinDirection, pinPosition, placedBounds, pointOnSegment, renderSheet, exportSheets, assignDesignators } from '../packages/core/src/index.js';
 import type { ComponentDefinition, Schematic, Instance, Resolved, Primitive, WireRoute } from '../packages/core/src/types.js';
 
 const resistor:ComponentDefinition={format_version:'1.0',component_code:'TEST_R',name:'Синтетический резистор',category:'passive',positional_prefix:'R',physical_pins:[{number:'1'},{number:'2'}],variants:[{variant_code:'01',name:'Основной',sections:[{section_id:'BODY',graphics:[{id:'body',kind:'rectangle',x:0,y:0,width:10,height:5}],pins:[{number:'1',x:-5,y:2.5,side:'left'},{number:'2',x:15,y:2.5,side:'right'}]}]}]};
@@ -183,4 +183,50 @@ test('automatic placement favors usable positions close to wired, fixed neighbor
  assert.deepEqual(fixed.position,{x:300,y:180});
  assert.ok(Math.abs(free.position.x-300)+Math.abs(free.position.y-180)<80);
  assert.deepEqual(errors(r),[]);
+});
+
+test('a free resistor to ground is vertical, readable and anchored below its signal terminal',async()=>{
+ const s=emptySchematic();
+ s.components=[placed('source',80,70),{...placed('shunt',0,0),value:'10 кОм',sections:{BODY:{}}}];
+ s.nets=[{id:'signal',render:'wire',pins:[{instance_id:'source',number:'2'},{instance_id:'shunt',number:'1'}]},
+  {id:'gnd',role:'ground',render:'label',pins:[{instance_id:'shunt',number:'2'}]}];
+ const result=await buildSchematic(s,lib),a=result.sections.find(c=>c.instance.id==='shunt')!;
+ assert.deepEqual(result.issues,[]);
+ assert.ok(a.rotation===90||a.rotation===270);
+ const pin=(num:string)=>a.section.pins.find(p=>p.number===num)!;
+ assert.ok(pinPosition(a,pin('2')).y>pinPosition(a,pin('1')).y);
+ const direction=pinDirection(a,pin('2'));assert.ok(direction.x===0&&direction.y===1);
+ assert.match(renderSheet(result,'sheet_1',{interactive:true}),/<g transform="rotate\(-90\)">.*?>R2<\/text>/);
+ assert.deepEqual(await buildSchematic(JSON.parse(JSON.stringify(result.schematic)),lib),result);
+ s.components[1].sections.BODY.rotation=0;
+ const explicit=await buildSchematic(s,lib);
+ assert.equal(explicit.sections.find(c=>c.instance.id==='shunt')?.rotation,0);
+});
+
+test('a free resistor chain folds into rows with vertical turns and stays fully wired',async()=>{
+ const s=emptySchematic();
+ s.components=Array.from({length:12},(_,i)=>({...placed('r'+i,0,0),sections:{BODY:{}}}));
+ s.nets=Array.from({length:11},(_,i)=>({id:'net_'+i,render:'wire',pins:[{instance_id:'r'+i,number:'2'},{instance_id:'r'+(i+1),number:'1'}]}));
+ const r=await buildSchematic(s,lib);
+ assert.deepEqual(r.issues,[]);
+ assert.equal(r.schematic.sheets.length,1);
+ const bounds=r.sections.map(a=>placedBounds(a));
+ const width=Math.max(...bounds.map(b=>b.right))-Math.min(...bounds.map(b=>b.x));
+ const height=Math.max(...bounds.map(b=>b.bottom))-Math.min(...bounds.map(b=>b.y));
+ assert.ok(width<185&&height>45&&height<160,`Unexpected footprint: ${width} × ${height} mm`);
+ assert.ok(r.sections.some(a=>a.rotation%180===90));
+ for(const n of s.nets)assert.ok(n.pins.every(p=>covers(r,p.instance_id,p.number,n.id)));
+});
+
+test('reflow rearranges soft hints without changing manual wiring, locked positions or explicit angle',async()=>{
+ const s=wired();
+ s.components[1].sections.BODY.locked=false;
+ s.components.push({...placed('free',330,180),sections:{BODY:{sheet_id:'sheet_1',position:{x:330,y:180},rotation:0}}});
+ s.layout.routes=[{id:'hand',net_id:'signal',sheet_id:'sheet_1',locked:true,points:[{x:75,y:62.5},{x:135,y:62.5}]}];
+ const r=await buildSchematic(s,lib,{reflow:true});
+ assert.deepEqual(r.issues,[]);
+ assert.deepEqual(r.sections.slice(0,2).map(a=>a.position),[{x:60,y:60},{x:140,y:60}]);
+ assert.deepEqual(r.routes,s.layout.routes);
+ assert.notDeepEqual(r.sections[2].position,{x:330,y:180});
+ assert.equal(r.sections[2].rotation,0);
 });

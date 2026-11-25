@@ -87,6 +87,22 @@ try{
   assert.deepEqual(json.nets[0].pins,pins);
   await openExample('demo.json');
  });
+ await check('reflow rotates and moves a soft ground resistor without moving the fixed part',async()=>{
+  const schematic={format_version:'1.0',document:{title:'Компактная расстановка',designation:'REFLOW'},sheets:[{id:'sheet_1'}],groups:[],
+   components:[['fixed',80,70,true],['shunt',320,140,false]].map(([id,x,y,locked])=>({id,component_code:'GEN_R',variant_code:'01',sections:{BODY:{sheet_id:'sheet_1',position:{x,y},locked}}})),
+   nets:[{id:'sig',render:'wire',pins:[{instance_id:'fixed',number:'2'},{instance_id:'shunt',number:'1'}]},{id:'gnd',render:'label',role:'ground',pins:[{instance_id:'shunt',number:'2'}]}],
+   layout:{mode:'mixed',unit:'mm',routes:[]}};
+  const fixed=page.locator('[data-section-key="fixed/BODY"]'),shunt=page.locator('[data-section-key="shunt/BODY"]');
+  await page.locator('input[type=file]').first().setInputFiles({name:'reflow.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(schematic))});
+  await shunt.waitFor();
+  const original=await fixed.getAttribute('transform');
+  assert.match(await shunt.getAttribute('transform'),/^translate\(320 140\) rotate\(0\)/);
+  await page.getByRole('button',{name:'Перестроить свободные',exact:true}).click();
+  await page.waitForFunction(()=>/rotate\((90|270)\)/.test(document.querySelector('[data-section-key="shunt/BODY"]')?.getAttribute('transform')??''));
+  assert.equal(await fixed.getAttribute('transform'),original);
+  assert.equal(await page.getByText('0 ошибок · 0 предупреждений',{exact:false}).count(),1);
+  await openExample('demo.json');
+ });
  await check('invalid pin import is rejected without replacing current document',async()=>{await page.locator('input[type=file]').first().setInputFiles(path.join(root,'examples','invalid_pin.json'));await page.getByText(/нет физического вывода 999/).waitFor();assert.equal(await page.locator('[data-section-key]').count(),4);await openExample('demo.json');});
  await check('library component can be added manually to an existing scheme',async()=>{await page.getByRole('button',{name:'+ Компонент',exact:true}).click();await page.getByLabel('Библиотечное определение').click();await page.getByRole('option',{name:/Резистор/}).click();await page.getByLabel('Номинал / значение',{exact:true}).fill('47 кОм');await page.getByRole('button',{name:'Добавить',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.statusbar')?.textContent.includes('4 компонентов'));const json=await downloadJson();assert.equal(json.components.length,4);assert.ok(json.components.some(c=>c.value==='47 кОм'));});
  await check('manual electrical net editor uses physical pin numbers',async()=>{await page.getByRole('button',{name:'+ Электрическая цепь',exact:true}).click();await page.getByLabel('Имя цепи / метки').fill('MANUAL');await page.getByLabel('Отображение',{exact:true}).click();await page.getByRole('option',{name:'Именованные метки'}).click();const dialog=page.getByRole('dialog');await dialog.locator('input[type=checkbox]:not(:disabled)').first().check();await page.getByRole('button',{name:'Применить',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.statusbar')?.textContent.includes('9 цепей'));const json=await downloadJson();assert.ok(json.nets.some(n=>n.name==='MANUAL'&&n.pins.length===1));});
