@@ -1,16 +1,20 @@
-import ELKModule from 'elkjs/lib/elk.bundled.js';
 import type {ComponentDefinition,Instance,Library,PlacedSection,Resolved,Schematic,Issue} from './types.js';
 import {expandRepeats,validateSchematic} from './validation.js';
-import {PAGE,placedBounds,sectionBounds,intersects,round,pinDirection} from './geometry.js';
-import {routeSchematic} from './routing.js';
-const ELK=ELKModule as unknown as {new():{layout:(g:any)=>Promise<any>}};
+import {PAGE,placedBounds,sectionBounds,intersects,round,pinDirection,pinPosition} from './geometry.js';
+import {MAX_SCHEMATIC_SHEETS} from './schemas.js';
+import {labelBounds,routeSchematic,type RoutedSheets} from './routing.js';
+type ElkLayout={layout:(g:any)=>Promise<any>};
+async function createElk():Promise<ElkLayout>{
+ const {default:Elk}=await import('elkjs/lib/elk.bundled.js');
+ return new (Elk as unknown as {new():ElkLayout})();
+}
 export function fingerprint(c:ComponentDefinition){let h=2166136261;const str=JSON.stringify(c);for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return(h>>>0).toString(16);}
 export function assignDesignators(s:Schematic,lib:Library,reset=false){const used=new Set(reset?[]:s.components.map(c=>c.designator).filter(Boolean));for(const c of s.components){if(reset)delete c.designator;if(c.designator)continue;const prefix=lib.find(d=>d.component_code===c.component_code)?.positional_prefix??'X';let i=1;while(used.has(prefix+i))i++;c.designator=prefix+i;used.add(c.designator);}}
 /** Explicit user action only: sheet order, then top-to-bottom and left-to-right. */
 export function renumberByPosition(s:Schematic){const anchor=(c:Instance)=>Object.values(c.sections).filter(p=>p.position).map(p=>({sheet:Math.max(0,s.sheets.findIndex(sh=>sh.id===p.sheet_id)),x:p.position!.x,y:p.position!.y})).sort((a,b)=>a.sheet-b.sheet||a.y-b.y||a.x-b.x)[0]??{sheet:1e6,x:1e6,y:1e6};s.components.sort((a,b)=>{const x=anchor(a),y=anchor(b);return x.sheet-y.sheet||x.y-y.y||x.x-y.x;});for(const c of s.components)delete c.designator;}
 export function emptySchematic():Schematic{return{format_version:'1.0',document:{title:'Схема электрическая принципиальная',designation:''},sheets:[{id:'sheet_1'}],groups:[],components:[],nets:[],layout:{mode:'mixed',unit:'mm',routes:[],labels:[]}};}
 let sequence=0;export function newId(prefix='id'){return `${prefix}_${Date.now().toString(36)}_${(++sequence).toString(36)}`;}
-export async function buildSchematic(input:Schematic,lib:Library,options:{reset?:boolean}={}):Promise<Resolved>{
+export async function buildSchematic(input:Schematic,lib:Library,options:{reset?:boolean}={},route:(s:Schematic,sections:PlacedSection[])=>RoutedSheets|Promise<RoutedSheets>=routeSchematic):Promise<Resolved>{
  const issues=validateSchematic(input,lib);if(issues.some(i=>i.severity==='error'))return{schematic:structuredClone(input),sections:[],routes:[],labels:[],issues};
  const expanded=expandRepeats(input),s=expanded.schematic;issues.push(...expanded.issues);assignDesignators(s,lib);
  if(options.reset){for(const c of s.components)for(const p of Object.values(c.sections)){delete p.position;delete p.locked;}s.layout.routes=[];s.layout.labels=[];}
@@ -18,8 +22,9 @@ export async function buildSchematic(input:Schematic,lib:Library,options:{reset?
  for(const c of s.components){const d=lib.find(d=>d.component_code===c.component_code)!;const f=fingerprint(d);if(c.definition_fingerprint&&c.definition_fingerprint!==f)issues.push({severity:'warning',code:'DEFINITION_CHANGED',message:`${c.designator}: библиотечное определение изменено; используется текущее`});c.definition_fingerprint=f;const v=d.variants.find(v=>v.variant_code===c.variant_code)!;for(const section of v.sections){const p=c.sections[section.section_id]??{};c.sections[section.section_id]=p;const group=s.groups.find(g=>g.tag===c.tag);if(group?.locked&&group.position&&p.position)p.locked=true;const pos=p.position?{x:p.position.x+(p.relative?(group?.position?.x??0):0),y:p.position.y+(p.relative?(group?.position?.y??0):0)}:{x:0,y:0};const label_padding:Partial<Record<'left'|'right'|'top'|'bottom',number>>={};for(const pin of section.pins){const net=s.nets.find(n=>n.pins.some(t=>t.instance_id===c.id&&t.number===pin.number));if(!net||net.render==='wire'&&net.pins.length>1)continue;const extent=(net.name||net.id).length*1.8+10;if(pin.side==='left'||pin.side==='right')label_padding[pin.side]=Math.max(label_padding[pin.side]??0,extent);else{label_padding[pin.side]=15;label_padding.right=Math.max(label_padding.right??0,extent);}}const b=sectionBounds(section,p.rotation,p.mirror,{...c,label_padding});sections.push({label_padding,key:`${c.id}/${section.section_id}`,instance:c,section,placement:p,sheet_id:p.sheet_id??group?.sheet_id??'',position:pos,rotation:p.rotation??0,mirror:p.mirror??false,width:b.right-b.x,height:b.bottom-b.y});}}
  const assigned=sections.filter(a=>a.placement.locked&&a.placement.position);for(const a of assigned)if(!a.sheet_id)a.sheet_id=s.sheets[0].id;
  const unplaced=sections.filter(a=>!assigned.includes(a));const groups=new Map<string,PlacedSection[]>();for(const a of unplaced){const key=`${a.sheet_id}|${a.instance.tag??a.instance.id}`;groups.set(key,[...(groups.get(key)??[]),a]);}
- const elk=new ELK();
+ let elk:ElkLayout|undefined;
  const stamp={x:PAGE.stamp.x-4,y:PAGE.stamp.y-4,right:PAGE.stamp.x+PAGE.stamp.width,bottom:PAGE.stamp.y+PAGE.stamp.height};
+ const sheetIds=new Set(s.sheets.map(sheet=>sheet.id));let nextSheet=s.sheets.length+1;
  const localBounds=new WeakMap<PlacedSection,ReturnType<typeof placedBounds>>(),obstacleBounds=new WeakMap<PlacedSection,ReturnType<typeof placedBounds>>();
  function boundsAt(a:PlacedSection,pos:{x:number;y:number}){let b=localBounds.get(a);if(!b){b=placedBounds({...a,position:{x:0,y:0}},3);localBounds.set(a,b);}return{x:b.x+pos.x,y:b.y+pos.y,right:b.right+pos.x,bottom:b.bottom+pos.y};}
  function free(a:PlacedSection,sheet:string,pos:{x:number;y:number}){const b=boundsAt(a,pos);return b.x>=PAGE.drawing.x&&b.y>=PAGE.drawing.y&&b.right<=PAGE.drawing.right&&b.bottom<=PAGE.drawing.bottom&&!intersects(b,stamp)&&!assigned.some(other=>{if(other.sheet_id!==sheet)return false;let box=obstacleBounds.get(other);if(!box){box=boundsAt(other,other.position);obstacleBounds.set(other,box);}return intersects(b,box);});}
@@ -28,21 +33,75 @@ export async function buildSchematic(input:Schematic,lib:Library,options:{reset?
  const list=rawList.filter(a=>{const g=s.groups.find(g=>g.tag===a.instance.tag);if(a.placement.position&&free(a,a.sheet_id||s.sheets[0].id,a.position)){a.sheet_id||=s.sheets[0].id;assigned.push(a);return false;}return true;});if(!list.length)continue;
  const edgeIds=new Set(list.map(a=>a.instance.id));const mapPin=(instance:string,num:string)=>list.find(a=>a.instance.id===instance&&a.section.pins.some(p=>p.number===num));
  const edges:any[]=[];for(const net of s.nets){const pins=net.pins.filter(p=>edgeIds.has(p.instance_id));for(let i=1;i<pins.length;i++){let a=mapPin(pins[i-1].instance_id,pins[i-1].number),b=mapPin(pins[i].instance_id,pins[i].number);if(a&&b&&a!==b){const pa=a.section.pins.find(p=>p.number===pins[i-1].number)!;const pb=b.section.pins.find(p=>p.number===pins[i].number)!;if(pa.side==='left'&&pb.side==='right')[a,b]=[b,a];edges.push({id:`e${edges.length}`,sources:[a.key],targets:[b.key]});}}}
- let graph:any;try{graph=await elk.layout({id:'root',layoutOptions:{'elk.algorithm':'layered','elk.direction':'RIGHT','elk.randomSeed':'1','elk.spacing.nodeNode':'18','elk.layered.spacing.nodeNodeBetweenLayers':'22','elk.padding':'[top=0,left=0,bottom=0,right=0]'},children:list.map(a=>({id:a.key,width:a.width+8,height:a.height+8})),edges});}catch{graph={children:list.map((a,i)=>({id:a.key,x:(i%6)*60,y:Math.floor(i/6)*55}))};issues.push({severity:'warning',code:'LAYOUT_FALLBACK',message:'ELK не смог разместить группу; применена детерминированная сетка'});}
+ let graph:any;try{elk??=await createElk();graph=await elk.layout({id:'root',layoutOptions:{'elk.algorithm':'layered','elk.direction':'RIGHT','elk.randomSeed':'1','elk.spacing.nodeNode':'18','elk.layered.spacing.nodeNodeBetweenLayers':'22','elk.padding':'[top=0,left=0,bottom=0,right=0]'},children:list.map(a=>({id:a.key,width:a.width+8,height:a.height+8})),edges});}catch{graph={children:list.map((a,i)=>({id:a.key,x:(i%6)*60,y:Math.floor(i/6)*55}))};issues.push({severity:'warning',code:'LAYOUT_FALLBACK',message:'ELK не смог разместить группу; применена детерминированная сетка'});}
  const local=new Map<string,{x:number;y:number}>((graph.children??[]).map((a:any)=>[a.id,{x:a.x??0,y:a.y??0}]));const group=s.groups.find(g=>g.tag===list[0].instance.tag);let target=list[0].sheet_id;
  // Attempt a whole tag group first, then individual sections if the group cannot fit.
  const offsets=list.map(a=>{const b=sectionBounds(a.section,a.rotation,a.mirror,{...a.instance,label_padding:a.label_padding}),loc=local.get(a.key)??{x:0,y:0};return{x:loc.x-b.x,y:loc.y-b.y};});const candidates=target?[target]:s.sheets.map(sh=>sh.id);let fitted=false;
- for(const sheet of candidates){const hint=group?.position;const origins=hint?[hint]:[];for(let y=PAGE.drawing.y;y<=240;y+=10)for(let x=PAGE.drawing.x;x<=350;x+=10)origins.push({x,y});for(const origin of origins){const poses=offsets.map(offset=>({x:round(origin.x+offset.x),y:round(origin.y+offset.y)}));if(list.every((a,i)=>free(a,sheet,poses[i]))){list.forEach((a,i)=>{a.position=poses[i];a.sheet_id=sheet;assigned.push(a);});fitted=true;break;}if(group?.locked&&hint)break;}if(fitted)break;}
+ // Look at a few valid translations, favoring short links to components
+ // already placed. Hard anchors and retained position hints are never moved.
+ const links:{index:number;x:number;y:number;to:{x:number;y:number};sheet:string;owner:string}[]=[];
+ if(!group?.locked&&assigned.length&&s.components.length<=200){
+  const own=new Map(list.flatMap((a,index)=>a.section.pins.map(pin=>[`${a.instance.id}\0${pin.number}`,{index,...pinPosition({...a,position:{x:0,y:0}},pin)}] as const)));
+  const neighbors=new Map(assigned.flatMap(a=>a.section.pins.map(pin=>[`${a.instance.id}\0${pin.number}`,{sheet:a.sheet_id,to:pinPosition(a,pin),owner:a.key}] as const)));
+  for(const net of s.nets){
+   const keys=net.pins.map(pin=>`${pin.instance_id}\0${pin.number}` as const);
+   const connected=keys.flatMap(key=>neighbors.get(key)??[]);
+   for(const key of keys){const terminal=own.get(key);if(terminal)for(const neighbor of connected.slice(0,4))if(links.length<48)links.push({...terminal,...neighbor});}
+   if(links.length>=48)break;
+  }
+ }
+ const between=(value:number,a:number,b:number)=>Math.min(a,b)<value&&value<Math.max(a,b);
+ function legHits(a:{x:number;y:number},b:{x:number;y:number},box:ReturnType<typeof placedBounds>){
+  return a.x===b.x?between(a.x,box.x,box.right)&&Math.max(a.y,b.y)>box.y&&Math.min(a.y,b.y)<box.bottom:
+   between(a.y,box.y,box.bottom)&&Math.max(a.x,b.x)>box.x&&Math.min(a.x,b.x)<box.right;
+ }
+ let winner:{sheet:string;poses:{x:number;y:number}[];score:number}|undefined;
+ for(const sheet of candidates){
+  const hint=group?.position;const origins=hint?[hint]:[];
+  for(const link of links.filter(l=>l.sheet===sheet).slice(0,4)){
+   const o=offsets[link.index],x=link.to.x-o.x-link.x,y=link.to.y-o.y-link.y;
+   for(const [dx,dy] of [[-30,0],[30,0],[0,-30],[0,30]])origins.push({x:x+dx,y:y+dy});
+  }
+  for(let y=PAGE.drawing.y;y<=240;y+=10)for(let x=PAGE.drawing.x;x<=350;x+=10)origins.push({x,y});
+  const obstacles=links.some(l=>l.sheet===sheet)?assigned.filter(a=>a.sheet_id===sheet).map(a=>({key:a.key,box:boundsAt(a,a.position)})):[];
+  let scanned=0;
+  for(const origin of origins){
+   const poses=offsets.map(offset=>({x:round(origin.x+offset.x),y:round(origin.y+offset.y)}));
+   if(list.every((a,i)=>free(a,sheet,poses[i]))){
+    const score=links.reduce((n,l)=>{
+     if(l.sheet!==sheet)return n+PAGE.width;
+     const from={x:poses[l.index].x+l.x,y:poses[l.index].y+l.y},to=l.to;
+     const crossings=(corner:{x:number;y:number})=>obstacles.filter(o=>o.key!==l.owner&&(legHits(from,corner,o.box)||legHits(corner,to,o.box))).length;
+     const blocked=Math.min(crossings({x:from.x,y:to.y}),crossings({x:to.x,y:from.y}));
+     return n+Math.abs(from.x-to.x)+Math.abs(from.y-to.y)+12*blocked;
+    },0);
+    if(!winner||score<winner.score)winner={sheet,poses,score};
+    if(++scanned>=(links.length?8:1))break;
+   }
+   if(group?.locked&&hint)break;
+  }
+  if(winner&&!links.length)break;
+ }
+ if(winner){const {sheet,poses}=winner;list.forEach((a,i)=>{a.position=poses[i];a.sheet_id=sheet;assigned.push(a);});fitted=true;}
+
  if(fitted)continue;
  if(group?.locked&&group.position){const sheet=target||s.sheets[0].id;for(const a of list){const b=sectionBounds(a.section,a.rotation,a.mirror,{...a.instance,label_padding:a.label_padding}),loc=local.get(a.key)??{x:0,y:0};a.position={x:round(group.position.x+loc.x-b.x),y:round(group.position.y+loc.y-b.y)};a.sheet_id=sheet;a.placement.locked=true;assigned.push(a);}issues.push({severity:'warning',code:'GROUP_ANCHOR_CONFLICT',message:`Группа ${group.id}: жёсткая позиция сохранена, но группа пересекает препятствия или границы листа`});continue;}
  for(const a of list){let done=false;const preferred=a.placement.position;if(preferred){const pos=a.position;const sh=target||s.sheets[0].id;if(free(a,sh,pos)){a.sheet_id=sh;assigned.push(a);continue;}}
- for(let attempt=0;attempt<2&&!done;attempt++){const sheetIds=target?[target]:s.sheets.map(sh=>sh.id);for(const sheet of sheetIds){const b=sectionBounds(a.section,a.rotation,a.mirror,{...a.instance,label_padding:a.label_padding});for(let y=PAGE.drawing.y;y<270&&!done;y+=5)for(let x=PAGE.drawing.x;x<400&&!done;x+=5){const pos={x:round(x-b.x),y:round(y-b.y)};if(free(a,sheet,pos)){a.position=pos;a.sheet_id=sheet;assigned.push(a);done=true;}}if(done)break;}if(!done&&!target){const id=`sheet_auto_${s.sheets.length+1}`;s.sheets.push({id});}else if(!done)break;}
+ const b=sectionBounds(a.section,a.rotation,a.mirror,{...a.instance,label_padding:a.label_padding});
+ function fitOn(sheet:string){for(let y=PAGE.drawing.y;y<270;y+=5)for(let x=PAGE.drawing.x;x<400;x+=5){const pos={x:round(x-b.x),y:round(y-b.y)};if(free(a,sheet,pos)){a.position=pos;a.sheet_id=sheet;assigned.push(a);return true;}}return false;}
+ done=(target?[target]:s.sheets.map(sh=>sh.id)).some(fitOn);
+ if(!done&&!target&&s.sheets.length<MAX_SCHEMATIC_SHEETS){
+  while(sheetIds.has(`sheet_auto_${nextSheet}`))nextSheet++;
+  const id=`sheet_auto_${nextSheet}`;
+  if(fitOn(id)){s.sheets.push({id});sheetIds.add(id);nextSheet++;done=true;}
+ }
  if(!done){a.sheet_id=target||s.sheets[0].id;const b=sectionBounds(a.section,a.rotation,a.mirror,{...a.instance,label_padding:a.label_padding});a.position={x:PAGE.drawing.x-b.x,y:PAGE.drawing.y-b.y};assigned.push(a);issues.push({severity:'error',code:'NO_SPACE',message:`${a.instance.designator}/${a.section.section_id}: нет места на заданном листе`});}}
  }
- for(const a of sections){const group=s.groups.find(g=>g.tag===a.instance.tag);const p=a.placement;p.sheet_id=a.sheet_id;if(p.relative&&group?.position)p.position={x:round(a.position.x-group.position.x),y:round(a.position.y-group.position.y)};else{p.position={...a.position};delete p.relative;}const b=placedBounds(a);if(b.x<PAGE.drawing.x||b.y<PAGE.drawing.y||b.right>PAGE.drawing.right||b.bottom>PAGE.drawing.bottom||intersects(b,stamp))issues.push({severity:'warning',code:'OUT_OF_BOUNDS',message:`${a.instance.designator}/${a.section.section_id}: выходит за рабочее поле или заходит на штамп`});}
- for(let i=0;i<sections.length;i++)for(let j=i+1;j<sections.length;j++)if(sections[i].sheet_id===sections[j].sheet_id&&intersects(placedBounds(sections[i]),placedBounds(sections[j])))issues.push({severity:'warning',code:'OVERLAP',message:`Наложение ${sections[i].instance.designator}/${sections[i].section.section_id} и ${sections[j].instance.designator}/${sections[j].section.section_id}`});
- const routed=routeSchematic(s,sections);issues.push(...routed.issues);
- const labelBoxes=routed.labels.map(label=>{const a=sections.find(a=>a.instance.id===label.pin?.instance_id&&a.section.pins.some(p=>p.number===label.pin?.number)),pin=a?.section.pins.find(p=>p.number===label.pin?.number),left=a&&pin&&pinDirection(a,pin).x<0,width=label.text.length*1.8;return{label,owner:a,box:{x:label.point.x+(left?-1-width:1),right:label.point.x+(left?-1:width+1),y:label.point.y-5,bottom:label.point.y-1.5}};});
- for(let i=0;i<labelBoxes.length;i++){const a=labelBoxes[i];if(a.box.x<20||a.box.right>415||a.box.y<5||a.box.bottom>292)issues.push({severity:'warning',code:'LABEL_OUT_OF_BOUNDS',message:`Метка ${a.label.text}: выходит за рамку листа`});if(sections.some(other=>other!==a.owner&&other.sheet_id===a.label.sheet_id&&intersects(a.box,placedBounds(other))))issues.push({severity:'warning',code:'LABEL_OVERLAP',message:`Метка ${a.label.text}: пересекает другой компонент или его подпись`});for(let j=i+1;j<labelBoxes.length;j++){const b=labelBoxes[j];if(a.label.sheet_id===b.label.sheet_id&&intersects(a.box,b.box))issues.push({severity:'warning',code:'LABEL_OVERLAP',message:`Пересекаются метки ${a.label.text} и ${b.label.text}`});}}
+ const physical=new Map(sections.map(a=>[a,placedBounds({...a,label_padding:undefined})]));
+ for(const a of sections){const group=s.groups.find(g=>g.tag===a.instance.tag);const p=a.placement;p.sheet_id=a.sheet_id;if(p.relative&&group?.position)p.position={x:round(a.position.x-group.position.x),y:round(a.position.y-group.position.y)};else{p.position={...a.position};delete p.relative;}const b=physical.get(a)!;if(b.x<PAGE.drawing.x||b.y<PAGE.drawing.y||b.right>PAGE.drawing.right||b.bottom>PAGE.drawing.bottom||intersects(b,stamp))issues.push({severity:'warning',code:'OUT_OF_BOUNDS',message:`${a.instance.designator}/${a.section.section_id}: выходит за рабочее поле или заходит на штамп`});}
+ for(let i=0;i<sections.length;i++)for(let j=i+1;j<sections.length;j++)if(sections[i].sheet_id===sections[j].sheet_id&&intersects(physical.get(sections[i])!,physical.get(sections[j])!))issues.push({severity:'warning',code:'OVERLAP',message:`Наложение ${sections[i].instance.designator}/${sections[i].section.section_id} и ${sections[j].instance.designator}/${sections[j].section.section_id}`});
+ const routed=await route(s,sections);issues.push(...routed.issues);
+ const labelBoxes=routed.labels.map(label=>{const a=sections.find(a=>a.instance.id===label.pin?.instance_id&&a.section.pins.some(p=>p.number===label.pin?.number)),pin=a?.section.pins.find(p=>p.number===label.pin?.number),left=!!(a&&pin&&pinDirection(a,pin).x<0);return{label,owner:a,box:labelBounds(label.text,label.point,left)};});
+ for(let i=0;i<labelBoxes.length;i++){const a=labelBoxes[i];if(a.box.x<20||a.box.right>415||a.box.y<5||a.box.bottom>292)issues.push({severity:'warning',code:'LABEL_OUT_OF_BOUNDS',message:`Метка ${a.label.text}: выходит за рамку листа`});if(sections.some(other=>other!==a.owner&&other.sheet_id===a.label.sheet_id&&intersects(a.box,physical.get(other)!)))issues.push({severity:'warning',code:'LABEL_OVERLAP',message:`Метка ${a.label.text}: пересекает другой компонент или его подпись`});for(let j=i+1;j<labelBoxes.length;j++){const b=labelBoxes[j];if(a.label.sheet_id===b.label.sheet_id&&intersects(a.box,b.box))issues.push({severity:'warning',code:'LABEL_OVERLAP',message:`Пересекаются метки ${a.label.text} и ${b.label.text}`});}}
  s.layout.routes=routed.routes;return{schematic:s,sections,routes:routed.routes,labels:routed.labels,issues};
 }

@@ -34,6 +34,31 @@ test('automatic layout and routes are deterministic and do not mutate input',asy
  const a=await buildSchematic(s,lib),b=await buildSchematic(s,lib);assert.deepEqual(errors(a),[]);assert.deepEqual(a.schematic,b.schematic);assert.deepEqual(a.routes,b.routes);assert.deepEqual(s,snapshot);
 });
 
+test('automatic overflow skips existing sheet IDs and does not append unusable sheets',async()=>{
+ const large=(code:string,width:number,height:number):ComponentDefinition=>{
+  const def=structuredClone(resistor);def.component_code=code;
+  def.variants[0].sections[0].graphics=[{id:'body',kind:'rectangle',x:0,y:0,width,height}];
+  return def;
+ };
+ const full='sheet_auto_2',s=emptySchematic();s.sheets=[{id:full}];
+ s.components=[
+  {...placed('upper',27,27),component_code:'UPPER',sections:{BODY:{sheet_id:full,position:{x:27,y:27},locked:true}}},
+  {...placed('lower',27,247),component_code:'LOWER',sections:{BODY:{sheet_id:full,position:{x:27,y:247},locked:true}}},
+  {...placed('free',0,0),sections:{BODY:{}}}
+ ];
+ const library=[...lib,large('UPPER',380,202),large('LOWER',196,36)];
+ const result=await buildSchematic(s,library);
+ assert.deepEqual(result.schematic.sheets.map(sh=>sh.id),[full,'sheet_auto_3']);
+ assert.equal(result.sections.find(a=>a.instance.id==='free')?.sheet_id,'sheet_auto_3');
+ assert.deepEqual(errors(result),[]);
+ assert.deepEqual(validateSchematic(result.schematic,library),[]);
+ const impossible=emptySchematic();
+ impossible.components=[{...placed('too_big',0,0),component_code:'TOO_BIG',sections:{BODY:{}}}];
+ const oversized=await buildSchematic(impossible,[large('TOO_BIG',500,300)]);
+ assert.ok(oversized.issues.some(i=>i.code==='NO_SPACE'));
+ assert.equal(oversized.schematic.sheets.length,1);
+});
+
 test('locked anchors and valid manual routes survive reimport; disconnected moved route is rejected',async()=>{
  const s=wired();const route:WireRoute={id:'manual',net_id:'signal',sheet_id:'sheet_1',points:[{x:75,y:62.5},{x:135,y:62.5}],locked:true};s.layout.routes=[route];
  const result=await buildSchematic(s,lib);assert.deepEqual(errors(result),[]);assert.deepEqual(result.routes.find(r=>r.id==='manual'),route);assert.deepEqual(result.sections[0].position,{x:60,y:60});
@@ -130,4 +155,32 @@ test('OpenGOST physical uppercase letter height is calibrated to 3.5 mm',async()
 test('explicit renumber follows placed page order and single sheet export retains original number',async()=>{
  const {renumberByPosition}=await import('../packages/core/src/layout.js');const s=wired();s.components.reverse();renumberByPosition(s);assignDesignators(s,lib);assert.equal(s.components[0].id,'left');assert.equal(s.components[0].designator,'R1');
  s.sheets.push({id:'sheet_2'});s.components[1].sections.BODY.sheet_id='sheet_2';s.nets[0].render='auto';const result=await buildSchematic(s,lib);const single=exportSheets(result,{sheetId:'sheet_2'});assert.equal(single.name,'sheet_02.svg');assert.equal(single.mime,'image/svg+xml');assert.doesNotMatch(strFromU8(single.bytes),/<text\b/);
+});
+
+test('wire segments slide orthogonally, and inner corners need no extra doglegs',async()=>{
+ const {moveWireSegment,moveWireVertex,insertWireVertex,removeWireVertex,wireAnchors,onWire}=await import('../apps/web/src/wireEditing.js');
+ const original=[{x:10,y:20},{x:20,y:20},{x:20,y:40},{x:80,y:40},{x:80,y:20},{x:90,y:20}];
+ const moved=moveWireSegment(original,2,{x:60,y:50});
+ assert.deepEqual(moved,[original[0],original[1],{x:20,y:50},{x:80,y:50},original[4],original[5]]);
+ const corner=moveWireVertex(moved,2,{x:25,y:55});
+ assert.deepEqual(corner,[original[0],{x:25,y:20},{x:25,y:55},{x:80,y:55},original[4],original[5]]);
+ const inserted=insertWireVertex(corner,2,{x:50,y:52});
+ assert.deepEqual(inserted[3],{x:50,y:55});
+ assert.deepEqual(removeWireVertex(inserted,3),corner);
+ const endpoint=moveWireSegment(original,0,{x:1,y:10});
+ assert.deepEqual(endpoint[0],original[0]);
+ assert.deepEqual(endpoint.at(-1),original.at(-1));
+ const branch=[{x:50,y:40},{x:50,y:60}];
+ assert.ok(wireAnchors(original,[branch],[]).some(a=>!onWire(a,moved)));
+});
+
+test('automatic placement favors usable positions close to wired, fixed neighbors',async()=>{
+ const s=emptySchematic();
+ s.components=[placed('fixed',300,180),{...placed('free',0,0),sections:{BODY:{}}}];
+ s.nets=[{id:'signal',render:'wire',pins:[{instance_id:'fixed',number:'2'},{instance_id:'free',number:'1'}]}];
+ const r=await buildSchematic(s,lib);
+ const fixed=r.sections.find(s=>s.instance.id==='fixed')!,free=r.sections.find(s=>s.instance.id==='free')!;
+ assert.deepEqual(fixed.position,{x:300,y:180});
+ assert.ok(Math.abs(free.position.x-300)+Math.abs(free.position.y-180)<80);
+ assert.deepEqual(errors(r),[]);
 });

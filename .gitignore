@@ -4,3 +4,10 @@
 !/.env.example
 /node_modules/
 /data/
+/dist/
+/artifacts/
+/coverage/
+/tmp/
+/test-results/
+/playwright-report/
+/фотографии для объяснения/

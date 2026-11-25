@@ -1,0 +1,455 @@
+{
+  "format_version": "1.0",
+  "document": {
+    "title": "Проверка импорта — 12 компонентов",
+    "designation": "SXT.00.Э3"
+  },
+  "sheets": [
+    {
+      "id": "sheet_main",
+      "title": "Вход, фильтр и управление"
+    }
+  ],
+  "groups": [],
+  "components": [
+    {
+      "id": "x1",
+      "component_code": "DEMO_CONNECTOR",
+      "variant_code": "01",
+      "value": "INPUT",
+      "designator": "X1",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 48,
+            "y": 65
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "r1",
+      "component_code": "GEN_R",
+      "variant_code": "01",
+      "value": "1 кОм",
+      "designator": "R1",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 108,
+            "y": 65
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "c1",
+      "component_code": "GEN_C",
+      "variant_code": "01",
+      "value": "10 нФ",
+      "designator": "C1",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 155,
+            "y": 90
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "vd1",
+      "component_code": "GEN_D",
+      "variant_code": "01",
+      "value": "TVS",
+      "designator": "VD1",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 80,
+            "y": 100
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "da1",
+      "component_code": "DEMO_IC",
+      "variant_code": "01",
+      "value": "TEST 8-pin",
+      "designator": "DA1",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 206,
+            "y": 67
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "l1",
+      "component_code": "GEN_L",
+      "variant_code": "01",
+      "value": "10 мкГн",
+      "designator": "L1",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 247,
+            "y": 67
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "vt1",
+      "component_code": "DEMO_TRANSISTOR",
+      "variant_code": "01",
+      "value": "NPN",
+      "designator": "VT1",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 284,
+            "y": 94
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "r2",
+      "component_code": "GEN_R",
+      "variant_code": "01",
+      "value": "10 кОм",
+      "designator": "R2",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 320,
+            "y": 95
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "g1",
+      "component_code": "DEMO_SOURCE",
+      "variant_code": "01",
+      "value": "5 В",
+      "designator": "G1",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 60,
+            "y": 163
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "sa1",
+      "component_code": "GEN_SWITCH",
+      "variant_code": "01",
+      "value": "ENABLE",
+      "designator": "SA1",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 145,
+            "y": 155
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "c2",
+      "component_code": "GEN_C",
+      "variant_code": "01",
+      "value": "1 мкФ",
+      "designator": "C2",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 200,
+            "y": 157
+          },
+          "locked": true
+        }
+      }
+    },
+    {
+      "id": "x2",
+      "component_code": "DEMO_CONNECTOR",
+      "variant_code": "01",
+      "value": "OUT",
+      "designator": "X2",
+      "sections": {
+        "BODY": {
+          "sheet_id": "sheet_main",
+          "position": {
+            "x": 340,
+            "y": 153
+          },
+          "locked": true
+        }
+      }
+    }
+  ],
+  "nets": [
+    {
+      "id": "net_IN",
+      "name": "IN",
+      "role": "signal",
+      "render": "wire",
+      "pins": [
+        {
+          "instance_id": "x1",
+          "number": "1"
+        },
+        {
+          "instance_id": "r1",
+          "number": "1"
+        },
+        {
+          "instance_id": "vd1",
+          "number": "1"
+        }
+      ]
+    },
+    {
+      "id": "net_RC",
+      "name": "RC",
+      "role": "signal",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "r1",
+          "number": "2"
+        },
+        {
+          "instance_id": "c1",
+          "number": "1"
+        },
+        {
+          "instance_id": "da1",
+          "number": "1"
+        }
+      ]
+    },
+    {
+      "id": "net_FEEDBACK",
+      "name": "FEEDBACK",
+      "role": "signal",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "da1",
+          "number": "2"
+        },
+        {
+          "instance_id": "r2",
+          "number": "1"
+        }
+      ]
+    },
+    {
+      "id": "net_OUTPUT",
+      "name": "OUTPUT",
+      "role": "signal",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "da1",
+          "number": "3"
+        },
+        {
+          "instance_id": "l1",
+          "number": "1"
+        }
+      ]
+    },
+    {
+      "id": "net_POWER",
+      "name": "POWER",
+      "role": "positive_supply",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "g1",
+          "number": "1"
+        },
+        {
+          "instance_id": "da1",
+          "number": "8"
+        },
+        {
+          "instance_id": "x2",
+          "number": "3"
+        },
+        {
+          "instance_id": "sa1",
+          "number": "1"
+        }
+      ]
+    },
+    {
+      "id": "net_GND",
+      "name": "GND",
+      "role": "ground",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "g1",
+          "number": "2"
+        },
+        {
+          "instance_id": "x1",
+          "number": "4"
+        },
+        {
+          "instance_id": "c1",
+          "number": "2"
+        },
+        {
+          "instance_id": "vd1",
+          "number": "2"
+        },
+        {
+          "instance_id": "da1",
+          "number": "4"
+        },
+        {
+          "instance_id": "vt1",
+          "number": "3"
+        },
+        {
+          "instance_id": "c2",
+          "number": "2"
+        },
+        {
+          "instance_id": "x2",
+          "number": "4"
+        }
+      ]
+    },
+    {
+      "id": "net_EN",
+      "name": "EN",
+      "role": "signal",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "sa1",
+          "number": "2"
+        },
+        {
+          "instance_id": "da1",
+          "number": "5"
+        }
+      ]
+    },
+    {
+      "id": "net_FILTER",
+      "name": "FILTER",
+      "role": "signal",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "l1",
+          "number": "2"
+        },
+        {
+          "instance_id": "x2",
+          "number": "1"
+        },
+        {
+          "instance_id": "vt1",
+          "number": "2"
+        },
+        {
+          "instance_id": "c2",
+          "number": "1"
+        }
+      ]
+    },
+    {
+      "id": "net_CONTROL",
+      "name": "CONTROL",
+      "role": "signal",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "vt1",
+          "number": "1"
+        },
+        {
+          "instance_id": "r2",
+          "number": "2"
+        },
+        {
+          "instance_id": "x2",
+          "number": "2"
+        }
+      ]
+    },
+    {
+      "id": "net_AUX",
+      "name": "AUX",
+      "role": "signal",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "x1",
+          "number": "2"
+        },
+        {
+          "instance_id": "da1",
+          "number": "6"
+        }
+      ]
+    },
+    {
+      "id": "net_SPARE",
+      "name": "SPARE",
+      "role": "signal",
+      "render": "auto",
+      "pins": [
+        {
+          "instance_id": "x1",
+          "number": "3"
+        },
+        {
+          "instance_id": "da1",
+          "number": "7"
+        }
+      ]
+    }
+  ],
+  "layout": {
+    "mode": "mixed",
+    "unit": "mm",
+    "routes": []
+  }
+}

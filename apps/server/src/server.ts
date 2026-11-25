@@ -6,10 +6,11 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { LibraryDatabase } from './database.js';
 import { componentCatalog } from './catalog.js';
+import { BuildPoolError, SchematicBuildPool, type BuildRequest } from './schematic-build.js';
 import { validateComponent, componentSchema, schematicSchema } from '../../../packages/core/src/validation.js';
 import type { ComponentDefinition, Issue } from '../../../packages/core/src/types.js';
 
-export type ServerOptions = { dataDir?: string; staticDir?: string; seed?: boolean; projectDir?: string; logger?: boolean };
+export type ServerOptions = { dataDir?: string; staticDir?: string; seed?: boolean; projectDir?: string; logger?: boolean; buildWorkers?: number; buildQueue?: number };
 class ApiError extends Error {
   constructor(readonly statusCode: number, message: string, readonly issues?: Issue[]) { super(message); }
 }
@@ -31,8 +32,10 @@ function assertComponent(value: unknown): asserts value is ComponentDefinition {
 export async function buildServer(options: ServerOptions = {}) {
   const projectDir = options.projectDir ?? process.cwd();
   const dataDir = path.resolve(options.dataDir ?? process.env.DATA_DIR ?? path.join(projectDir, 'data'));
+  const buildPool = new SchematicBuildPool(options.buildWorkers,options.buildQueue);
   const store = new LibraryDatabase(dataDir);
   const app = Fastify({ logger: options.logger ?? false, bodyLimit: 10 * 1024 * 1024, requestTimeout: 30_000 });
+  app.addHook('preClose', async () => { await buildPool.close(); });
   app.addHook('onClose', async () => { store.close(); });
   app.addHook('onSend', async (_req, reply, payload) => {
     reply.header('X-Content-Type-Options', 'nosniff');
@@ -68,6 +71,32 @@ export async function buildServer(options: ServerOptions = {}) {
   }
 
   app.get('/api/health', async () => ({ status:'ok', version:'1.0.0', storage:'library-only' }));
+  app.post('/api/schematics/build',{ bodyLimit:10*1024*1024 },async (req,reply) => {
+    reply.header('Cache-Control','no-store');
+    const body = req.body as Partial<BuildRequest> | null | undefined;
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+      Object.keys(body).some(key=>!['schematic','library','options','preview'].includes(key)) ||
+      !body.schematic || typeof body.schematic !== 'object' || Array.isArray(body.schematic) ||
+      !Array.isArray(body.library) || body.library.length > 10_000 ||
+      (body.preview !== undefined && typeof body.preview !== 'boolean') ||
+      (body.options !== undefined && (!body.options || typeof body.options !== 'object' || Array.isArray(body.options) ||
+        Object.keys(body.options).some(key=>key!=='reset') || (body.options.reset!==undefined && typeof body.options.reset!=='boolean')))) {
+      throw new ApiError(400,'Передайте объект schematic, массив library (до 10000 компонентов) и, при необходимости, options.reset и preview.');
+    }
+    const controller = new AbortController();
+    const disconnect = () => { if (!reply.raw.writableFinished) controller.abort(); };
+    reply.raw.once('close',disconnect);
+    try {
+      const result = await buildPool.run(body as BuildRequest,controller.signal);
+      if (!result.ok) throw new ApiError(result.status,result.message,result.issues);
+      return reply.header('X-Schematic-Routing-Workers',String(result.routingWorkers)).type('application/json; charset=utf-8').send(result.json);
+    } catch(error) {
+      if (error instanceof BuildPoolError) throw new ApiError(error.status,error.message);
+      throw error;
+    } finally {
+      reply.raw.removeListener('close',disconnect);
+    }
+  });
   app.get('/api/components', async () => store.list());
   app.get<{Params:{code:string}}>('/api/components/:code', async req => {
     const component = store.get(req.params.code);

@@ -9,3 +9,7 @@ AGENTS.md
 .env.*
 coverage
 artifacts
+tmp
+test-results
+playwright-report
+фотографии для объяснения

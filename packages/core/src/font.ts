@@ -1,6 +1,7 @@
 /** Local OpenGOST type B font and vector export. No network or DOM dependencies. */
 import opentype from 'opentype.js';
 import type { Font } from 'opentype.js';
+import { FONT_BASE64 } from './font-data.js';
 
 export const DRAWING_FONT_FAMILY = 'OpenGOST type B';
 // OpenGOST cap height = 1000 units, em = 1700: requested sizes are physical uppercase heights.
@@ -8,6 +9,15 @@ export const DRAWING_FONT_SCALE = 1.7;
 export const DRAWING_FONT_URL = '/fonts/OpenGOSTTypeB-Regular.ttf';
 export function parseDrawingFont(buffer: ArrayBuffer): Font {
   return opentype.parse(buffer);
+}
+let bundled:Font|undefined;
+export function bundledDrawingFont():Font {
+  if (!bundled) {
+    const binary=atob(FONT_BASE64),u=new Uint8Array(binary.length);
+    for(let i=0;i<u.length;i++)u[i]=binary.charCodeAt(i);
+    bundled=parseDrawingFont(u.buffer);
+  }
+  return bundled;
 }
 function xml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]!));
