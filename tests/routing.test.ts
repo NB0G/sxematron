@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildSchematic, emptySchematic, exportSheets, pinPosition, pointOnSegment, renderSheet } from '../packages/core/src/index.js';
+import { buildSchematic, emptySchematic, exportSheets, pinPosition, placedBodyBounds, pointOnSegment, renderSheet } from '../packages/core/src/index.js';
+import { BODY_CLEARANCE } from '../packages/core/src/routing.js';
 import type { Instance, Library, Point, Schematic } from '../packages/core/src/types.js';
 
 const fixture=(name:string)=>JSON.parse(readFileSync(new URL(`../examples/${name}`,import.meta.url),'utf8'));
@@ -90,4 +91,76 @@ test('locked wire passing through a foreign component is warned about but not mo
  s.layout.routes=[manual];const r=await buildSchematic(s,library);
  assert.deepEqual(r.issues.map(i=>i.code),['LOCKED_ROUTE_OBSTACLE']);
  assert.deepEqual(r.routes,[manual]);
+});
+
+test('ground is approached from above even with a horizontal pin or a fixed label position',async()=>{
+ const s=emptySchematic();
+ s.components=[component('a',60,60)];
+ s.nets=[{id:'ground',name:'GND',render:'label',role:'ground',pins:[{instance_id:'a',number:'2'}]}];
+ for(const manual of [undefined,{x:95,y:80}]){
+  s.layout.labels=manual?[{net_id:'ground',instance_id:'a',number:'2',position:manual,locked:true}]:[];
+  const r=await buildSchematic(s,library);
+  assert.deepEqual(r.issues,[]);
+  const marker=r.labels[0];
+  assert.equal(marker.approach,'down');
+  if(manual)assert.deepEqual(marker.point,manual);
+  const [a,b]=r.routes[0].points.slice(-2);
+  assert.deepEqual(b,marker.point);
+  assert.equal(a.x,b.x);
+  assert.ok(b.y-a.y>=3.75);
+  assert.match(renderSheet(r,'sheet_1'),new RegExp(`M ${b.x} ${b.y} v 1.25`));
+ }
+});
+
+test('arrows connect horizontally, and same-net continuation markers avoid existing wires',async()=>{
+ const s=emptySchematic();
+ s.sheets.push({id:'second'});
+ s.components=[component('a',60,60),component('b',145,60),component('c',75,105,90)];
+ s.components[2].sections.BODY.sheet_id='second';
+ s.nets=[{id:'x',name:'VMID',render:'wire',pins:[{instance_id:'a',number:'2'},{instance_id:'b',number:'1'},{instance_id:'c',number:'1'}]}];
+ const r=await buildSchematic(s,library);
+ assert.deepEqual(r.issues,[]);
+ assert.equal(r.labels.length,2);
+ for(const l of r.labels){
+  const wire=r.routes.find(w=>w.sheet_id===l.sheet_id&&w.id.startsWith('label_'))!;
+  const [a,b]=wire.points.slice(-2);
+  assert.deepEqual(b,l.point);
+  assert.equal(a.y,b.y);
+  assert.ok(Math.abs(b.x-a.x)>=3.75);
+  assert.equal(l.approach,b.x>a.x?'right':'left');
+  assert.ok(r.routes.filter(w=>w.sheet_id===l.sheet_id&&w!==wire).every(w=>w.points.slice(1).every((p,i)=>!pointOnSegment(l.point,w.points[i],p))));
+ }
+ assert.match(renderSheet(r,'second',{interactive:true}),/<g transform="rotate\(-90\)"><text[^>]+>1<\/text><\/g>/);
+});
+
+test('automatic wire keeps clearance from an unrelated body, even when the straight line touches it',async()=>{
+ const s=emptySchematic();
+ s.components=[component('left',55,60),component('right',160,60),component('obstacle',105,57.5)];
+ s.nets=[{id:'signal',render:'wire',pins:[{instance_id:'left',number:'2'},{instance_id:'right',number:'1'}]}];
+ const r=await buildSchematic(s,library);
+ assert.deepEqual(r.issues,[]);
+ const box=placedBodyBounds(r.sections[2],BODY_CLEARANCE)!;
+ for(const w of r.routes)for(let i=1;i<w.points.length;i++){
+  const [a,b]=[w.points[i-1],w.points[i]];
+  const crosses=a.x===b.x?a.x>box.x&&a.x<box.right&&Math.max(a.y,b.y)>box.y&&Math.min(a.y,b.y)<box.bottom:
+   a.y>box.y&&a.y<box.bottom&&Math.max(a.x,b.x)>box.x&&Math.min(a.x,b.x)<box.right;
+  assert.equal(crosses,false,`case clearance broken by ${JSON.stringify([a,b])}`);
+ }
+ assert.ok(r.routes[0].points.length>2);
+});
+
+test('power-to-ground capacitors without fixed coordinates pack in a compact block',async()=>{
+ const s=emptySchematic();
+ s.components=Array.from({length:10},(_,i)=>({id:'c'+i,component_code:'GEN_C',variant_code:'01',sections:{BODY:{}}}));
+ s.nets=[
+  {id:'vcc',name:'3V3',role:'positive_supply',render:'label',pins:s.components.map(c=>({instance_id:c.id,number:'1'}))},
+  {id:'ground',name:'GND',role:'ground',render:'label',pins:s.components.map(c=>({instance_id:c.id,number:'2'}))}
+ ];
+ const r=await buildSchematic(s,library);
+ assert.equal(r.schematic.sheets.length,1);
+ assert.deepEqual(r.issues,[]);
+ assert.ok(r.sections.every(a=>a.rotation%180===90));
+ const xs=r.sections.map(a=>a.position.x);
+ assert.ok(Math.max(...xs)-Math.min(...xs)<125);
+ assert.equal(r.labels.filter(l=>l.approach==='down').length,10);
 });

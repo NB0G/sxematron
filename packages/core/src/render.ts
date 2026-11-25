@@ -1,5 +1,5 @@
 import type {Primitive,Resolved,PlacedSection,ComponentDefinition,Point,WireRoute} from './types.js';
-import {PAGE,pinPosition,pointOnSegment,round,same,sectionBounds,pinDirection,hasTurnedCaption,sectionCaption} from './geometry.js';
+import {PAGE,pinPosition,pointOnSegment,round,same,sectionBounds,pinDirection,transform,hasTurnedCaption,sectionCaption} from './geometry.js';
 import {DRAWING_FONT_FAMILY,DRAWING_FONT_SCALE,bundledDrawingFont,outlineSvgText,embedDrawingFont} from './font.js';
 import {FONT_BASE64} from './font-data.js';
 import {strToU8,zipSync} from 'fflate';
@@ -8,7 +8,12 @@ const attr=(v:unknown)=>escapeXml(v);
 const n=(v:number|undefined)=>round(v??0);
 function text(x:number,y:number,value:unknown,size=3.5,anchor='start',extra=''){return `<text x="${n(x)}" y="${n(y)}" font-size="${n(size*DRAWING_FONT_SCALE)}" text-anchor="${anchor}" fill="#111" stroke="none" ${extra}>${escapeXml(value)}</text>`;}
 export function renderPrimitive(p:Primitive):string{const transform=`${p.rotation?` rotate(${p.rotation})`:''}${p.mirror?' scale(-1 1)':''}`;let s='';switch(p.kind){case'line':s=`<line x1="${n(p.x)}" y1="${n(p.y)}" x2="${n(p.x2)}" y2="${n(p.y2)}"/>`;break;case'rectangle':s=`<rect x="${n(p.x)}" y="${n(p.y)}" width="${n(p.width)}" height="${n(p.height)}"/>`;break;case'circle':s=`<circle cx="${n(p.x)}" cy="${n(p.y)}" r="${n(p.r)}"/>`;break;case'arc':{const r=p.r??1,a=(p.start??0)*Math.PI/180,b=(p.end??180)*Math.PI/180;const x=p.x??0,y=p.y??0;const span=(p.end??180)-(p.start??0);s=`<path d="M ${n(x+r*Math.cos(a))} ${n(y+r*Math.sin(a))} A ${r} ${r} 0 ${Math.abs(span)>180?1:0} ${span>=0?1:0} ${n(x+r*Math.cos(b))} ${n(y+r*Math.sin(b))}"/>`;break;}case'polyline':case'polygon':s=`<${p.kind} points="${(p.points??[]).map(q=>`${n(q.x)},${n(q.y)}`).join(' ')}"/>`;break;case'text':s=text(p.x??0,p.y??0,p.text,3.5,p.align==='center'?'middle':p.align==='right'?'end':'start');break;case'group':s=`<g transform="translate(${n(p.x)} ${n(p.y)})">${(p.children??[]).map(renderPrimitive).join('')}</g>`;break;}return `<g${transform?` transform="${transform.trim()}"`:''}>${s}</g>`;}
-function renderSection(s:PlacedSection,interactive:boolean){const attrs=interactive?` data-section-key="${attr(s.key)}" data-instance-id="${attr(s.instance.id)}" data-section-id="${attr(s.section.section_id)}"`:'';let body=s.section.graphics.map(renderPrimitive).join('');for(const p of s.section.pins){const d={left:{x:1,y:0},right:{x:-1,y:0},top:{x:0,y:1},bottom:{x:0,y:-1}}[p.side],l=p.length??5;body+=`<line x1="${p.x}" y1="${p.y}" x2="${n(p.x+d.x*l)}" y2="${n(p.y+d.y*l)}"/>`;const off=p.side==='left'?{x:1,y:-1}:p.side==='right'?{x:-1,y:-1}:p.side==='top'?{x:1,y:2}: {x:1,y:-1};body+=text(p.x+off.x,p.y+off.y,p.number,2.5,p.side==='right'?'end':'start');if(interactive)body+=`<circle cx="${p.x}" cy="${p.y}" r="1.4" fill="transparent" stroke="none" data-pin-number="${attr(p.number)}" data-instance-id="${attr(s.instance.id)}"/>`;}
+function renderSection(s:PlacedSection,interactive:boolean){const attrs=interactive?` data-section-key="${attr(s.key)}" data-instance-id="${attr(s.instance.id)}" data-section-id="${attr(s.section.section_id)}"`:'';let body=s.section.graphics.map(renderPrimitive).join('');for(const p of s.section.pins){const d={left:{x:1,y:0},right:{x:-1,y:0},top:{x:0,y:1},bottom:{x:0,y:-1}}[p.side],l=p.length??5;body+=`<line x1="${p.x}" y1="${p.y}" x2="${n(p.x+d.x*l)}" y2="${n(p.y+d.y*l)}"/>`;const off=p.side==='left'?{x:1,y:-1}:p.side==='right'?{x:-1,y:-1}:p.side==='top'?{x:1,y:2}: {x:1,y:-1};if(s.rotation||s.mirror){
+  const at=transform(p,s.rotation,s.mirror),out=pinDirection(s,p);
+  const inverse=`${s.mirror?'scale(-1 1) ':''}rotate(${-s.rotation})`;
+  const x=at.x+(out.x>0?-1:1),y=at.y+(out.y<0?3.2:-1);
+  body+=`<g transform="${inverse}">${text(x,y,p.number,2.5,out.x>0?'end':'start')}</g>`;
+ }else body+=text(p.x+off.x,p.y+off.y,p.number,2.5,p.side==='right'?'end':'start');if(interactive)body+=`<circle cx="${p.x}" cy="${p.y}" r="1.4" fill="transparent" stroke="none" data-pin-number="${attr(p.number)}" data-instance-id="${attr(s.instance.id)}"/>`;}
  const hit=sectionBounds(s.section,0,false,s.instance);const suffix=s.section.section_id==='BODY'?'':'.'+s.section.section_id;
  const label=(s.instance.designator??s.instance.id)+suffix;
  if(hasTurnedCaption(s.rotation)){
@@ -33,7 +38,18 @@ export function renderSheet(res:Resolved,sheetId:string,options:{interactive?:bo
  for(const r of rs){const points=r.points.map(p=>`${n(p.x)},${n(p.y)}`).join(' ');if(inter)s+=`<polyline points="${points}" stroke="transparent" stroke-width="2" data-route-id="${attr(r.id)}" data-net-id="${attr(r.net_id)}" class="schematic-route"/>`;s+=`<polyline points="${points}"${inter?` data-route-id="${attr(r.id)}" data-net-id="${attr(r.net_id)}" class="schematic-route"`:''}/>`;}
  s+=junctions(rs);if(inter)s+='</g>';for(const a of res.sections.filter(a=>a.sheet_id===sheetId))s+=renderSection(a,inter);
  if(inter)s+='<g class="schematic-wiring">';
- for(const label of res.labels.filter(a=>a.sheet_id===sheetId)){const extra=inter?`data-label-net="${attr(label.net_id)}" data-instance-id="${attr(label.pin?.instance_id)}" data-pin-number="${attr(label.pin?.number)}"`:'';if(label.role==='ground'){s+=`<path d="M ${label.point.x} ${label.point.y} h 3 m -5 1.25 h 7 m -6 1.25 h 5 m -4 1.25 h 3"/>`;}else{s+=`<path d="M ${label.point.x-2} ${label.point.y-1.25} L ${label.point.x} ${label.point.y} L ${label.point.x-2} ${label.point.y+1.25}"/>`;}const section=res.sections.find(s=>s.instance.id===label.pin?.instance_id&&s.section.pins.some(p=>p.number===label.pin?.number));const pin=section?.section.pins.find(p=>p.number===label.pin?.number);const left=section&&pin&&pinDirection(section,pin).x<0;s+=text(label.point.x+(left?-1:1),label.point.y-1.5,label.text,3.5,left?'end':'start',extra);}
+ for(const label of res.labels.filter(a=>a.sheet_id===sheetId)){
+  const {x,y}=label.point;
+  const extra=inter?`data-label-net="${attr(label.net_id)}" data-instance-id="${attr(label.pin?.instance_id)}" data-pin-number="${attr(label.pin?.number)}"`:'';
+  if(label.role==='ground'){
+   s+=`<path d="M ${n(x)} ${n(y)} v 1.25 M ${n(x-3.5)} ${n(y+1.25)} h 7 M ${n(x-2.5)} ${n(y+2.5)} h 5 M ${n(x-1.5)} ${n(y+3.75)} h 3"/>`;
+  }else{
+   const back=x+(label.approach==='left'?2:-2);
+   s+=`<path d="M ${n(back)} ${n(y-1.25)} L ${n(x)} ${n(y)} L ${n(back)} ${n(y+1.25)}"/>`;
+  }
+  const left=label.alignLeft??false;
+  s+=text(x+(left?-1:1),y-1.5,label.text,3.5,left?'end':'start',extra);
+ }
  if(inter)s+='</g>';s+='</svg>';return options.outlineFont?outlineSvgText(s,options.outlineFont):s;
 }
 export function exportSheets(res:Resolved,options:{textMode?:'outline'|'editable';sheetId?:string}={}):{name:string;bytes:Uint8Array;mime:string}{

@@ -18,5 +18,5 @@ export type Schematic={format_version:'1.0';document:{title:string;designation:s
 export type Issue={severity:'error'|'warning';code:string;message:string;path?:string};
 export type PlacedSection={key:string;instance:Instance;section:Section;placement:Placement;sheet_id:string;position:Point;rotation:number;mirror:boolean;width:number;height:number;label_padding?:Partial<Record<'left'|'right'|'top'|'bottom',number>>};
 export type Resolved={schematic:Schematic;sections:PlacedSection[];routes:WireRoute[];issues:Issue[];labels:RenderedLabel[]};
-export type RenderedLabel={net_id:string;sheet_id:string;point:Point;text:string;role?:Net['role'];pin?:Terminal;continuation?:boolean};
+export type RenderedLabel={net_id:string;sheet_id:string;point:Point;text:string;role?:Net['role'];pin?:Terminal;continuation?:boolean;approach?:'left'|'right'|'down';alignLeft?:boolean};
 export type Library=ComponentDefinition[];

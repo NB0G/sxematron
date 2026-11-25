@@ -1,19 +1,26 @@
 import type {Schematic,PlacedSection,WireRoute,Point,Issue,RenderedLabel,Terminal,Pin,Net} from './types.js';
-import {PAGE,placedBounds,pinPosition,pinDirection,intersects,simplify,same,pointOnSegment,round,type Bounds} from './geometry.js';
+import {PAGE,placedBodyBounds,placedBounds,pinPosition,pinDirection,intersects,simplify,same,pointOnSegment,round,type Bounds} from './geometry.js';
 import {bundledDrawingFont,DRAWING_FONT_SCALE} from './font.js';
 
 type Endpoint={point:Point;placed:PlacedSection;pin:Pin;terminal:Terminal};
 type Segment=[Point,Point];
 type Box={owner?:PlacedSection;bounds:Bounds};
 const STEP=PAGE.grid;
-const CLEARANCE=.25;
-const BEND_COST=3;
+const CLEARANCE=.25; // Pin and caption envelope, separate from the actual case.
+export const BODY_CLEARANCE=1.25;
+const LABEL_LEAD=3.75;
+const BEND_COST=4;
 const MIN_X=21, MAX_X=414, MIN_Y=6, MAX_Y=291;
 const stamp:Bounds={x:PAGE.stamp.x-1,y:PAGE.stamp.y-1,right:415,bottom:292};
 const dirs=[{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}];
 const direction=(a:Point,b:Point)=>a.x===b.x?(a.y<b.y?1:3):(a.x<b.x?0:2);
 const opposite=(dir:number)=>(dir+2)%4;
 const dist=(a:Point,b:Point)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
+function shortJog(points:Point[]){
+ let sum=0;
+ for(let i=2;i<points.length-1;i++)if(dist(points[i-1],points[i])<1.25)sum+=4;
+ return sum;
+}
 const inFrame=(p:Point)=>p.x>=MIN_X&&p.x<=MAX_X&&p.y>=MIN_Y&&p.y<=MAX_Y;
 const segments=(points:Point[]):Segment[]=>points.slice(1).map((p,i)=>[points[i],p]);
 const between=(n:number,a:number,b:number)=>n>=Math.min(a,b)&&n<=Math.max(a,b);
@@ -110,11 +117,11 @@ function exit(e:Endpoint,box:Bounds){
 
 // Try low-bend Manhattan paths first. Exact pin ordinates and obstacle edges are
 // retained in the fallback search, so just snapping cannot create a staircase.
-function findPath(start:Point,end:Point,boxes:Box[],blocked:Blocked,from:number,to?:number):Point[]|undefined{
+function findPath(start:Point,end:Point,boxes:Box[],blocked:Blocked,from:number,to?:number,search=true):Point[]|undefined{
  if(!inFrame(start)||!inFrame(end))return;
  if(same(start,end))return to===opposite(from)?undefined:[start];
  const bend=(a:number,b:number)=>a===b?0:BEND_COST;
- const score=(path:Point[])=>{let cost=0,last=from;for(const [a,b]of segments(path)){const next=direction(a,b);if(next===opposite(last)||blocked(a,b))return Infinity;cost+=dist(a,b)+bend(last,next);last=next;}return to===undefined?cost:to===opposite(last)?Infinity:cost+bend(last,to);};
+ const score=(path:Point[])=>{let cost=shortJog(path),last=from;for(const [a,b]of segments(path)){const next=direction(a,b);if(next===opposite(last)||blocked(a,b))return Infinity;cost+=dist(a,b)+bend(last,next);last=next;}return to===undefined?cost:to===opposite(last)?Infinity:cost+bend(last,to);};
  const mx=round((start.x+end.x)/2),my=round((start.y+end.y)/2);
  const proposals=[
   // Equal-cost bends should use the middle of the gap, not hug a pin.
@@ -130,7 +137,7 @@ function findPath(start:Point,end:Point,boxes:Box[],blocked:Blocked,from:number,
  // the same axis needs two turns when coordinates differ on that axis's normal.
  let lowerBends=to===undefined?0:from===to?0:from===opposite(to)?2:1;
  if(to===from&&((from%2===0&&start.y!==end.y)||(from%2===1&&start.x!==end.x)))lowerBends=2;
- if(bestCost<=dist(start,end)+BEND_COST*lowerBends+.001)return best;
+ if(!search||bestCost<=dist(start,end)+BEND_COST*lowerBends+.001)return best;
  const coords=(min:number,max:number,s:number,e:number,keys:number[])=>{
   const values=new Set([min,max,s,e]);
   for(let p=Math.ceil(min/STEP)*STEP;p<=max;p+=STEP)values.add(p);
@@ -157,7 +164,11 @@ function findPath(start:Point,end:Point,boxes:Box[],blocked:Blocked,from:number,
   closed[i]=1;visited++;
   const p=point(i),heading=i%4,x=Math.floor(i/4)%w,y=Math.floor(i/4/w);
   if(same(p,end)){
-   if(to!==opposite(heading)){const total=cost[i]+(to===undefined?0:bend(heading,to));if(total<bestCost){bestCost=total;const path:Point[]=[];for(let j=i;j!==-1;j=parent[j])path.push(point(j));best=simplify(path.reverse());}}
+   if(to!==opposite(heading)){
+    const path:Point[]=[];for(let j=i;j!==-1;j=parent[j])path.push(point(j));
+    const simple=simplify(path.reverse()),total=score(simple);
+    if(total<bestCost){bestCost=total;best=simple;}
+   }
    continue;
   }
   for(let k=0;k<dirs.length;k++){
@@ -215,21 +226,35 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
    const b=placedBounds({...a,label_padding:undefined},CLEARANCE);
    return [a,{x:round(b.x),y:round(b.y),right:round(b.right),bottom:round(b.bottom)}];
   }));
-  const base:Box[]=[...padded].map(([owner,bounds])=>({owner,bounds}));
+  const bodyClearance=new Map(bodies.flatMap(a=>{const b=placedBodyBounds(a,BODY_CLEARANCE);return b?[[a,b] as const]:[];}));
+  const base:Box[]=[...padded,...bodyClearance].map(([owner,bounds])=>({owner,bounds}));
+  function pinExit(e:Endpoint){
+   const p=exit(e,padded.get(e.placed)!),c=bodyClearance.get(e.placed);
+   if(!c)return p;
+   const d=pinDirection(e.placed,e.pin);
+   if(d.x&&p.y>c.y&&p.y<c.bottom)p.x=d.x<0?Math.min(p.x,c.x):Math.max(p.x,c.right);
+   if(d.y&&p.x>c.x&&p.x<c.right)p.y=d.y<0?Math.min(p.y,c.y):Math.max(p.y,c.bottom);
+   return p;
+  }
   base.push({bounds:stamp});
   const labelBoxes:Bounds[]=[];
   const sheetRoutes=locked.slice();
   for(const r of locked){
    const ends=s.nets.find(n=>n.id===r.net_id)?.pins.map(pin=>endpoints.get(terminalKey(pin)))??[];
    const parts=segments(r.points);
-   const blockedBy=bodies.find(owner=>parts.some(([a,b])=>segmentHits(a,b,physical.get(owner)!)&&!ends.some(e=>{
+   const hits=(owner:PlacedSection,box:Bounds)=>parts.some(([a,b])=>segmentHits(a,b,box)&&!ends.some(e=>{
     if(!e||e.placed!==owner)return false;
     const other=same(a,e.point)?b:same(b,e.point)?a:undefined;
     if(!other)return false;
     const d=pinDirection(owner,e.pin);
     return d.x?other.y===e.point.y&&(other.x-e.point.x)*d.x>0:other.x===e.point.x&&(other.y-e.point.y)*d.y>0;
-   })));
+   }));
+   const blockedBy=bodies.find(owner=>hits(owner,physical.get(owner)!));
    if(blockedBy)issues.push({severity:'warning',code:'LOCKED_ROUTE_OBSTACLE',message:`Ручной маршрут ${r.id} проходит через ${blockedBy.instance.designator??blockedBy.instance.id}/${blockedBy.section.section_id}`});
+   else{
+    const close=[...bodyClearance].find(([owner,box])=>hits(owner,box));
+    if(close)issues.push({severity:'warning',code:'LOCKED_ROUTE_CLEARANCE',message:`Ручной маршрут ${r.id} близко к корпусу ${close[0].instance.designator??close[0].instance.id}; требуется зазор`});
+   }
   }
   const add=(r:WireRoute)=>{routes.push(r);sheetRoutes.push(r);};
   const treeByNet=new Map<string,Segment[]>();
@@ -261,7 +286,7 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
    const foreign=occupied(sheetRoutes,net.id),blocked=collision(base,foreign);
    const root=local[0],remaining=local.slice(1).map(end=>({end,nearest:root,distance:dist(root.point,end.point)})),tree:Segment[]=[];
    treeByNet.set(net.id,tree);
-   const exits=new Map(local.map(e=>[e,exit(e,padded.get(e.placed)!)]));
+   const exits=new Map(local.map(e=>[e,pinExit(e)]));
    let serial=0;
    while(remaining.length){
     let bi=0;
@@ -284,7 +309,7 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
        const middle=findPath(from,goal,base,blocked,heading);
        if(!middle)continue;
        const candidate=stopAtTree(withoutLoops([b.point,...middle]),tree);
-       const score=segments(candidate).reduce((n,[p,q])=>n+dist(p,q),0)+BEND_COST*Math.max(0,candidate.length-2);
+       const score=segments(candidate).reduce((n,[p,q])=>n+dist(p,q),0)+BEND_COST*Math.max(0,candidate.length-2)+shortJog(candidate)+(candidate.length>2&&dist(candidate.at(-2)!,candidate.at(-1)!)<1.25?5:0);
        if(score<best&&!onForeign(candidate.at(-1)!,foreign)){path=candidate;best=score;}
       }
      }else{
@@ -317,55 +342,81 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
   // are tried in deterministic order; explicit user positions are untouched.
   pending.sort((a,b)=>Number(manualLabels.has(`${b.net.id}\0${terminalKey(b.end.terminal)}`))-Number(manualLabels.has(`${a.net.id}\0${terminalKey(a.end.terminal)}`)));
   for(const {net,end:e,continuation} of pending){
-   const dir=pinDirection(e.placed,e.pin),left=dir.x<0;
+   const dir=pinDirection(e.placed,e.pin),ground=net.role==='ground';
    const text=(net.name||net.id)+(continuation.length?` (л.${continuation.join(',')})`:'');
-   const textBox=labelBounds(text,{x:0,y:0},left);
-   const boxAt=(p:Point)=>({x:p.x+textBox.x,right:p.x+textBox.right,y:p.y+textBox.y,bottom:p.y+textBox.bottom});
+   const textBoxes={left:labelBounds(text,{x:0,y:0},true),right:labelBounds(text,{x:0,y:0},false)};
    const manual=manualLabels.get(`${net.id}\0${terminalKey(e.terminal)}`);
-   const wanted={x:round(e.point.x+dir.x*7.5),y:round(e.point.y+dir.y*7.5)};
-   let point=manual??wanted;
-   let points=simplify([e.point,{x:point.x,y:e.point.y},point]);
-   if(!manual){
-    const foreign=occupied(sheetRoutes,net.id),boxes=[...base,...labelBoxes.map(bounds=>({bounds}))];
-    const tree=treeByNet.get(net.id)??[];
-    const attached=tree.some(([a,b])=>pointOnSegment(e.point,a,b));
-    const conflicts=collision(boxes,foreign);
-    const blocked:Blocked=(a,b,owner)=>conflicts(a,b,owner)||(!attached&&tree.some(([c,d])=>hit(a,b,c,d)!==undefined));
-    const lead=exit(e,padded.get(e.placed)!);
-    const clearLabel=(p:Point)=>{
-     const box=boxAt(p);
-     return inFrame(p)&&box.x>=20&&box.right<=415&&box.y>=5&&box.bottom<=292&&!intersects(box,stamp)&&
-      ![...physical.values(),...labelBoxes].some(other=>intersects(box,other,.25))&&
-      !foreign.segments.some(([a,b])=>segmentHits(a,b,box));
+   const lead=pinExit(e),heading=direction(e.point,lead);
+   const foreign=occupied(sheetRoutes,net.id),allSegments=sheetRoutes.flatMap(r=>segments(r.points));
+   const tree=treeByNet.get(net.id)??[],attached=tree.some(([a,b])=>pointOnSegment(e.point,a,b));
+   const boxes=[...base,...labelBoxes.map(bounds=>({bounds}))],conflicts=collision(boxes,foreign);
+   const blocked:Blocked=(a,b,owner)=>conflicts(a,b,owner)||(!attached&&tree.some(([c,d])=>hit(a,b,c,d)!==undefined));
+   type Approach='left'|'right'|'down';
+   type Candidate={point:Point;tail:Point;approach:Approach;alignLeft:boolean;mark:Bounds;text:Bounds;dir:number};
+   const candidates:Candidate[]=[],seen=new Set<string>();
+   const blockedAreas=[...physical.values(),...labelBoxes,stamp];
+   function offer(p:Point,approach:Approach,alignLeft=approach==='left'){
+    const point={x:round(p.x),y:round(p.y)},key=`${point.x},${point.y},${approach},${alignLeft}`;
+    if(seen.has(key)||!inFrame(point))return;seen.add(key);
+    const {x,y}=point,b=textBoxes[alignLeft?'left':'right'];
+    const text={x:x+b.x,right:x+b.right,y:y+b.y,bottom:y+b.bottom};
+    // Reserve the visible symbol and the editor's hit circle.
+    const mark=ground?{x:x-4,right:x+4,y:y-1.6,bottom:y+5.8}:{
+     x:x+(approach==='left'?-1.6:-2.6),right:x+(approach==='left'?2.6:1.6),y:y-1.85,bottom:y+1.85
     };
-    const candidates:Point[]=[wanted];
-    for(const n of [5,2.5,10,12.5,15,20,25,30,40,50])for(const offset of [0,-2.5,2.5,-5,5,-7.5,7.5,-10,10,-15,15,-20,20]){
-     candidates.push({x:round(lead.x+dir.x*n+dir.y*offset),y:round(lead.y+dir.y*n+dir.x*offset)});
+    if([text,mark].some(b=>b.x<20||b.right>415||b.y<5||b.bottom>292||
+     blockedAreas.some(o=>intersects(b,o,.25))||allSegments.some(([a,c])=>segmentHits(a,c,b))))return;
+    const tail={x:round(x+(approach==='left'?LABEL_LEAD:approach==='right'?-LABEL_LEAD:0)),y:round(y-(ground?LABEL_LEAD:0))};
+    if(blocked(tail,point))return;
+    candidates.push({point,tail,approach,alignLeft,mark,text,dir:ground?1:approach==='left'?2:0});
+   }
+   if(manual){
+    if(ground){offer(manual,'down',dir.x<0);offer(manual,'down',dir.x>=0);}
+    else for(const h of (dir.x<0?['left','right']:['right','left']) as Approach[])offer(manual,h);
+   }else if(ground){
+    for(const below of [6,8.75,12.5,17.5,25,35,45])for(const shift of [0,5,-5,10,-10,15,-15,22.5,-22.5,30,-30]){
+     const x=dir.x?lead.x+dir.x*6+shift:lead.x+shift;
+     const y=Math.max(lead.y+below,e.point.y+below);
+     offer({x,y},'down',dir.x<0);
+     if(!dir.x)offer({x,y},'down',true);
     }
-    // Prefer a short lead with at most two bends before reaching for A*.
-    let found=false;
-    const clear=candidates.filter(p=>clearLabel(p)&&!onForeign(p,foreign));
-    for(const p of clear){
-     const alternatives=dir.x?[{x:p.x,y:lead.y},{x:lead.x,y:p.y}]:[{x:lead.x,y:p.y},{x:p.x,y:lead.y}];
-     for(const corner of alternatives){
-      if(blocked(e.point,lead,e.placed)||segments(simplify([lead,corner,p])).some(([a,b])=>blocked(a,b)))continue;
-      point=p;points=simplify([e.point,lead,corner,p]);found=true;break;
-     }
-     if(found)break;
-    }
-    if(!found&&!blocked(e.point,lead,e.placed))for(const p of clear.slice(0,4)){
-     const path=findPath(lead,p,boxes,blocked,direction(e.point,lead));
-     if(path){point=p;points=withoutLoops([e.point,...path]);found=true;break;}
-    }
-    if(!found){
-     // Keep an honest diagnostic when the available space cannot hold the lead.
-     issues.push({severity:'warning',code:'LABEL_CROWDED',message:`Метка ${text}: не найден свободный маршрут от вывода`});
-    }else{
-     if(attached)points=stopAtTree(points.slice().reverse(),tree).reverse();
+   }else{
+    const sides=dir.x<0?[-1,1]:[1,-1];
+    for(const n of [7.5,10,13.75,17.5,25,35,50])for(const dy of [0,-5,5,-10,10,-15,15,-22.5,22.5,30,-30])for(const side of sides){
+     const p={x:lead.x+side*n,y:lead.y+(dir.y?dir.y*5:0)+dy};
+     offer(p,side<0?'left':'right');
     }
    }
-   labels.push({net_id:net.id,sheet_id:sheet,point,text,role:net.role,pin:e.terminal,continuation:continuation.length>0});
-   labelBoxes.push(boxAt(point));
+   let choice:Candidate|undefined,points:Point[]=[],bestScore=Infinity;
+   if(!blocked(e.point,lead,e.placed)){
+    const score=(c:Candidate)=>dist(lead,c.tail)+(dir.x&&c.dir!==heading&&!ground?6:0);
+    candidates.sort((a,b)=>score(a)-score(b));
+    function tryPath(c:Candidate,search:boolean){
+     const avoidLabel:Blocked=(a,b)=>blocked(a,b)||segmentHits(a,b,c.text)||segmentHits(a,b,c.mark);
+     const middle=findPath(lead,c.tail,search?[...boxes,{bounds:c.text},{bounds:c.mark}]:boxes,avoidLabel,heading,c.dir,search);
+     if(!middle)return;
+     let path=withoutLoops([e.point,...middle,c.point]);
+     if(attached)path=stopAtTree(path.slice().reverse(),tree).reverse();
+     const a=path.at(-2),b=path.at(-1);
+     if(!a||!b||!same(b,c.point)||direction(a,b)!==c.dir||dist(a,b)<LABEL_LEAD-.001)return;
+     const cost=segments(path).reduce((sum,[a,b])=>sum+dist(a,b),0)+BEND_COST*Math.max(0,path.length-2)+shortJog(path);
+     if(cost<bestScore){choice=c;points=path;bestScore=cost;}
+    }
+    let valid=0;
+    for(const c of candidates){
+     if(choice&&dist(lead,c.tail)+LABEL_LEAD>bestScore+6)break;
+     const previous=bestScore;tryPath(c,false);
+     if(previous!==bestScore)valid++;
+     if(valid>=6)break;
+    }
+    if(!choice)for(const c of candidates.slice(0,3)){tryPath(c,true);if(choice)break;}
+   }
+   if(!choice){
+    issues.push({severity:'warning',code:'LABEL_CROWDED',message:`Метка ${text}: нет свободного места с правильным подводом; раздвиньте элементы`});
+    continue;
+   }
+   labels.push({net_id:net.id,sheet_id:sheet,point:choice.point,text,role:net.role,pin:e.terminal,continuation:continuation.length>0,approach:choice.approach,alignLeft:choice.alignLeft});
+   labelBoxes.push(choice.text,choice.mark);
    if(points.length>1)add({id:routeId('label',net,net.pins.findIndex(pin=>terminalKey(pin)===terminalKey(e.terminal))),net_id:net.id,sheet_id:sheet,points});
   }
   for(let i=0;i<sheetRoutes.length;i++)for(let j=i+1;j<sheetRoutes.length;j++){

@@ -36,6 +36,13 @@ export function sectionBounds(s:Section,rotation=0,mirror=false,caption?:{value?
  }
  return turned;
 }
+/** Graphics only. Pin leads are not a solid case between terminal tips. */
+export function placedBodyBounds(s:PlacedSection,padding=0):Bounds|undefined{
+ const pts=s.section.graphics.flatMap(graphicPoints);
+ if(!pts.length)return undefined;
+ const b=pointBounds(pts.map(p=>transform(p,s.rotation,s.mirror)));
+ return {x:round(s.position.x+b.x-padding),y:round(s.position.y+b.y-padding),right:round(s.position.x+b.right+padding),bottom:round(s.position.y+b.bottom+padding)};
+}
 export function placedBounds(s:PlacedSection,padding=0):Bounds{const b=sectionBounds(s.section,s.rotation,s.mirror,{...s.instance,label_padding:s.label_padding});return{x:s.position.x+b.x-padding,y:s.position.y+b.y-padding,right:s.position.x+b.right+padding,bottom:s.position.y+b.bottom+padding};}
 export function intersects(a:Bounds,b:Bounds,gap=0){return a.x<b.right+gap&&a.right+gap>b.x&&a.y<b.bottom+gap&&a.bottom+gap>b.y;}
 export function inside(p:Point,b:Bounds){return p.x>b.x&&p.x<b.right&&p.y>b.y&&p.y<b.bottom;}
