@@ -230,3 +230,21 @@ test('reflow rearranges soft hints without changing manual wiring, locked positi
  assert.notDeepEqual(r.sections[2].position,{x:330,y:180});
  assert.equal(r.sections[2].rotation,0);
 });
+
+test('built-in R/C have their GOST drawing sizes, including unchanged legacy templates',async()=>{
+ const {standardBuiltInSymbol}=await import('../packages/core/src/gost-symbols.js');
+ const {PAGE}=await import('../packages/core/src/geometry.js');
+ const builtin=JSON.parse(readFileSync(new URL('../examples/library.json',import.meta.url),'utf8')) as ComponentDefinition[];
+ const r=builtin.find(d=>d.component_code==='GEN_R')!,c=builtin.find(d=>d.component_code==='GEN_C')!;
+ const body=(d:ComponentDefinition)=>d.variants[0].sections[0];
+ assert.deepEqual([PAGE.width,PAGE.height],[420,297]);
+ assert.deepEqual([body(r).graphics[0].width,body(r).graphics[0].height],[10,4]);
+ const [a,b]=body(c).graphics;
+ assert.equal(a.y2!-a.y!,8);assert.equal(b.y2!-b.y!,8);assert.equal(b.x!-a.x!,1.5);
+ const legacy=structuredClone(r);
+ Object.assign(body(legacy).graphics[0],{y:0,height:5});
+ assert.deepEqual(standardBuiltInSymbol(legacy),r);
+ assert.deepEqual(body(legacy).pins,body(r).pins);
+ body(legacy).graphics[0].width=13;
+ assert.equal(standardBuiltInSymbol(legacy),legacy,'never scale an edited definition');
+});

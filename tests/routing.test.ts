@@ -164,3 +164,36 @@ test('power-to-ground capacitors without fixed coordinates pack in a compact blo
  assert.ok(Math.max(...xs)-Math.min(...xs)<125);
  assert.equal(r.labels.filter(l=>l.approach==='down').length,10);
 });
+
+test('different nets get three millimetres of parallel spacing, without changing a fixed wire',async()=>{
+ const s=emptySchematic();
+ s.components=[component('first',65,87.5),component('last',180,87.5),component('left',35,89.5),component('right',230,89.5)];
+ s.nets=[
+  {id:'locked',render:'wire',pins:[{instance_id:'first',number:'2'},{instance_id:'last',number:'1'}]},
+  {id:'free',render:'wire',pins:[{instance_id:'left',number:'2'},{instance_id:'right',number:'1'}]}
+ ];
+ const locked={id:'original',net_id:'locked',sheet_id:'sheet_1',locked:true,points:[{x:80,y:90},{x:175,y:90}]};
+ s.layout.routes=[locked];
+ const r=await buildSchematic(s,library);
+ assert.deepEqual(r.issues,[]);
+ assert.deepEqual(r.routes[0],locked);
+ const path=r.routes.find(w=>w.net_id==='free')!.points;
+ for(let i=1;i<path.length;i++){
+  const a=path[i-1],b=path[i];
+  if(a.y===b.y&&Math.min(a.x,b.x)<175&&Math.max(a.x,b.x)>80)assert.ok(Math.abs(a.y-90)>=3);
+ }
+ assert.ok(path.length>2);
+});
+
+test('a left facing contact prefers a direct left-side marker instead of a loop around its own body',async()=>{
+ const s=emptySchematic();
+ s.components=[component('a',140,80)];
+ s.nets=[{id:'shield',name:'SHIELD',render:'label',pins:[{instance_id:'a',number:'1'}]}];
+ const r=await buildSchematic(s,library);
+ assert.deepEqual(r.issues,[]);
+ const label=r.labels[0],pin=pinPosition(r.sections[0],r.sections[0].section.pins[0]);
+ assert.equal(label.approach,'left');
+ assert.ok(label.point.x<pin.x);
+ assert.equal(label.point.y,pin.y);
+ assert.deepEqual(r.routes[0].points,[pin,label.point]);
+});

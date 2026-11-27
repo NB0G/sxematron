@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { LibraryDatabase } from './database.js';
+import {standardBuiltInSymbol} from '../../../packages/core/src/gost-symbols.js';
 import { componentCatalog } from './catalog.js';
 import { BuildPoolError, SchematicBuildPool, type BuildRequest } from './schematic-build.js';
 import { validateComponent, componentSchema, schematicSchema } from '../../../packages/core/src/validation.js';
@@ -97,11 +98,11 @@ export async function buildServer(options: ServerOptions = {}) {
       reply.raw.removeListener('close',disconnect);
     }
   });
-  app.get('/api/components', async () => store.list());
+  app.get('/api/components', async () => store.list().map(standardBuiltInSymbol));
   app.get<{Params:{code:string}}>('/api/components/:code', async req => {
     const component = store.get(req.params.code);
     if (!component) throw new ApiError(404, 'Компонент не найден.');
-    return component;
+    return standardBuiltInSymbol(component);
   });
   app.post('/api/components', async (req, reply) => {
     assertComponent(req.body);
@@ -121,7 +122,7 @@ export async function buildServer(options: ServerOptions = {}) {
     store.remove(req.params.code);
     return reply.code(204).send();
   });
-  app.get('/api/library/export', async (_req, reply) => reply.header('Content-Disposition','attachment; filename="component-library.json"').send({format_version:'1.0',components:store.list(),reserved_codes:store.db.prepare('SELECT code FROM component_codes WHERE code NOT IN (SELECT code FROM components) ORDER BY code').all().map(row=>String(row.code))}));
+  app.get('/api/library/export', async (_req, reply) => reply.header('Content-Disposition','attachment; filename="component-library.json"').send({format_version:'1.0',components:store.list().map(standardBuiltInSymbol),reserved_codes:store.db.prepare('SELECT code FROM component_codes WHERE code NOT IN (SELECT code FROM components) ORDER BY code').all().map(row=>String(row.code))}));
   app.post('/api/library/import', async req => {
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) throw new ApiError(400, 'Ожидается объект импорта библиотеки.');
     const body = req.body as {format_version?:string;components?:unknown[];replace?:boolean;reserved_codes?:string[]};
@@ -137,7 +138,7 @@ export async function buildServer(options: ServerOptions = {}) {
       seen.add(c.component_code);
       const existing = store.get(c.component_code);
       if (!existing && store.reserved(c.component_code)) throw new ApiError(409, `Код ${c.component_code} зарезервирован после удаления и не может использоваться повторно.`);
-      if (existing && !isDeepStrictEqual(existing, c) && !body.replace) throw new ApiError(409, `Компонент ${c.component_code} отличается от текущего. Для явной замены повторите импорт с replace: true.`);
+      if (existing && !isDeepStrictEqual(standardBuiltInSymbol(existing), standardBuiltInSymbol(c)) && !body.replace) throw new ApiError(409, `Компонент ${c.component_code} отличается от текущего. Для явной замены повторите импорт с replace: true.`);
     }
     for (const code of body.reserved_codes ?? []) {
       if (seen.has(code) || store.get(code)) throw new ApiError(409, `Зарезервированный удалённый код ${code} конфликтует с действующим компонентом.`);
@@ -147,7 +148,7 @@ export async function buildServer(options: ServerOptions = {}) {
       for (const c of definitions) {
         const existing = store.get(c.component_code);
         if (!existing) {store.create(c); added++;}
-        else if (isDeepStrictEqual(existing, c)) skipped++;
+        else if (isDeepStrictEqual(standardBuiltInSymbol(existing), standardBuiltInSymbol(c))) skipped++;
         else {store.update(c); replaced++;}
       }
     });
@@ -164,7 +165,7 @@ export async function buildServer(options: ServerOptions = {}) {
   });
   app.get<{Params:{name:string}}>('/api/docs/:name', async (req, reply) => {
     const name = req.params.name;
-    if (name === 'COMPONENT_CATALOG.md') return reply.type('text/markdown; charset=utf-8').send(componentCatalog(store.list()));
+    if (name === 'COMPONENT_CATALOG.md') return reply.type('text/markdown; charset=utf-8').send(componentCatalog(store.list().map(standardBuiltInSymbol)));
     if (!['SCHEMATIC_AI.md','COMPONENT_BUILDER_AI.md'].includes(name)) throw new ApiError(404,'Документ не найден.');
     const file = path.join(projectDir,'docs',name);
     if (!existsSync(file)) throw new ApiError(404,'Документ отсутствует в сборке.');

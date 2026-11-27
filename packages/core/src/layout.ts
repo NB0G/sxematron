@@ -1,6 +1,7 @@
 import type {ComponentDefinition,Instance,Library,PlacedSection,Resolved,Schematic,Issue,Placement} from './types.js';
 import {expandRepeats,validateSchematic} from './validation.js';
 import {PAGE,placedBounds,sectionBounds,intersects,round,pinPosition} from './geometry.js';
+import {standardBuiltInSymbol} from './gost-symbols.js';
 import {MAX_SCHEMATIC_SHEETS} from './schemas.js';
 import {chooseAutoShape,compactOrigins,pinNets,placementGroups,type AutoEdge,type LayoutElk} from './auto-placement.js';
 import {labelBounds,routeSchematic,type RoutedSheets} from './routing.js';
@@ -16,6 +17,7 @@ export function renumberByPosition(s:Schematic){const anchor=(c:Instance)=>Objec
 export function emptySchematic():Schematic{return{format_version:'1.0',document:{title:'Схема электрическая принципиальная',designation:''},sheets:[{id:'sheet_1'}],groups:[],components:[],nets:[],layout:{mode:'mixed',unit:'mm',routes:[],labels:[]}};}
 let sequence=0;export function newId(prefix='id'){return `${prefix}_${Date.now().toString(36)}_${(++sequence).toString(36)}`;}
 export async function buildSchematic(input:Schematic,lib:Library,options:LayoutOptions={},route:(s:Schematic,sections:PlacedSection[])=>RoutedSheets|Promise<RoutedSheets>=routeSchematic):Promise<Resolved>{
+ lib=lib.map(standardBuiltInSymbol);
  const issues=validateSchematic(input,lib);if(issues.some(i=>i.severity==='error'))return{schematic:structuredClone(input),sections:[],routes:[],labels:[],issues};
  const expanded=expandRepeats(input),s=expanded.schematic;issues.push(...expanded.issues);assignDesignators(s,lib);
  if(options.reset){for(const c of s.components)for(const p of Object.values(c.sections)){delete p.position;delete p.locked;}s.layout.routes=[];s.layout.labels=[];}

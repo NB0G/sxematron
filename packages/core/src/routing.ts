@@ -9,7 +9,8 @@ const STEP=PAGE.grid;
 const CLEARANCE=.25; // Pin and caption envelope, separate from the actual case.
 export const BODY_CLEARANCE=1.25;
 const LABEL_LEAD=3.75;
-const BEND_COST=4;
+export const PARALLEL_WIRE_SPACING=3;
+const BEND_COST=6;
 const MIN_X=21, MAX_X=414, MIN_Y=6, MAX_Y=291;
 const stamp:Bounds={x:PAGE.stamp.x-1,y:PAGE.stamp.y-1,right:415,bottom:292};
 const dirs=[{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}];
@@ -89,12 +90,23 @@ function withoutLoops(points:Point[]){
  return simplify(out);
 }
 
-type Occupancy={segments:Segment[];lines:Map<string,Segment[]>;ends:Map<string,Point[]>};
+type Occupancy={segments:Segment[];tracks:Map<string,Segment[]>;ends:Map<string,Point[]>};
+const bucket=(n:number)=>Math.floor(n/PARALLEL_WIRE_SPACING);
+function parallelTooClose(a:Point,b:Point,c:Point,d:Point){
+ if(a.x===b.x&&c.x===d.x)return Math.abs(a.x-c.x)<PARALLEL_WIRE_SPACING-.001&&Math.min(Math.max(a.y,b.y),Math.max(c.y,d.y))-Math.max(Math.min(a.y,b.y),Math.min(c.y,d.y))>.001;
+ if(a.y===b.y&&c.y===d.y)return Math.abs(a.y-c.y)<PARALLEL_WIRE_SPACING-.001&&Math.min(Math.max(a.x,b.x),Math.max(c.x,d.x))-Math.max(Math.min(a.x,b.x),Math.min(c.x,d.x))>.001;
+ return false;
+}
+function trackGuides(occupancy:Occupancy):Box[]{
+ return occupancy.segments.map(([a,b])=>({bounds:a.x===b.x
+  ? {x:round(a.x-PARALLEL_WIRE_SPACING),right:round(a.x+PARALLEL_WIRE_SPACING),y:Math.min(a.y,b.y),bottom:Math.max(a.y,b.y)}
+  : {x:Math.min(a.x,b.x),right:Math.max(a.x,b.x),y:round(a.y-PARALLEL_WIRE_SPACING),bottom:round(a.y+PARALLEL_WIRE_SPACING)}}));
+}
 function addToMap<T>(map:Map<string,T[]>,key:string,value:T){const found=map.get(key);if(found)found.push(value);else map.set(key,[value]);}
 function occupied(wires:WireRoute[],net:string){
- const result:Occupancy={segments:[],lines:new Map(),ends:new Map()};
+ const result:Occupancy={segments:[],tracks:new Map(),ends:new Map()};
  for(const wire of wires)if(wire.net_id!==net){
-  for(const s of segments(wire.points)){result.segments.push(s);addToMap(result.lines,s[0].x===s[1].x?'x'+s[0].x:'y'+s[0].y,s);}
+  for(const s of segments(wire.points)){result.segments.push(s);addToMap(result.tracks,s[0].x===s[1].x?'x'+bucket(s[0].x):'y'+bucket(s[0].y),s);}
   for(const p of [wire.points[0],wire.points.at(-1)!]){addToMap(result.ends,'x'+p.x,p);addToMap(result.ends,'y'+p.y,p);}
  }
  return result;
@@ -104,8 +116,10 @@ type Blocked=(a:Point,b:Point,owner?:PlacedSection)=>boolean;
 function collision(boxes:Box[],foreign:Occupancy):Blocked{
  return (a,b,owner)=>{
   if(!inFrame(a)||!inFrame(b)||boxes.some(o=>(!owner||o.owner!==owner)&&segmentHits(a,b,o.bounds)))return true;
-  const key=a.x===b.x?'x'+a.x:'y'+a.y;
-  return !!foreign.lines.get(key)?.some(([c,d])=>overlap(a,b,c,d))||!!foreign.ends.get(key)?.some(p=>pointOnSegment(p,a,b));
+  if(same(a,b))return false;
+  const axis=a.x===b.x?'x':'y',at=axis==='x'?a.x:a.y,k=bucket(at);
+  for(let i=k-1;i<=k+1;i++)if(foreign.tracks.get(axis+i)?.some(([c,d])=>parallelTooClose(a,b,c,d)))return true;
+  return !!foreign.ends.get(axis+at)?.some(p=>pointOnSegment(p,a,b));
  };
 }
 const onForeign=(p:Point,foreign:Occupancy)=>foreign.segments.some(([a,b])=>pointOnSegment(p,a,b));
@@ -237,6 +251,15 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
    return p;
   }
   base.push({bounds:stamp});
+  // Leave an exit at pins of other nets, before their wires or label stubs
+  // have been drawn. Otherwise an earlier route can fence a pin in.
+  const portBoxes=s.nets.flatMap(net=>net.pins.flatMap(pin=>{
+   const e=endpoints.get(terminalKey(pin));
+   if(!e||e.placed.sheet_id!==sheet)return [];
+   const d=pinDirection(e.placed,e.pin),{x,y}=e.point,xx=x+3*d.x,yy=y+3*d.y;
+   return [{netId:net.id,bounds:{x:round(Math.min(x,xx)-1.25),right:round(Math.max(x,xx)+1.25),y:round(Math.min(y,yy)-1.25),bottom:round(Math.max(y,yy)+1.25)}}];
+  }));
+  const otherPorts=(net:Net)=>portBoxes.filter(b=>b.netId!==net.id);
   const labelBoxes:Bounds[]=[];
   const sheetRoutes=locked.slice();
   for(const r of locked){
@@ -283,7 +306,7 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
     treeByNet.set(net.id,locked);
     continue;
    }
-   const foreign=occupied(sheetRoutes,net.id),blocked=collision(base,foreign);
+   const foreign=occupied(sheetRoutes,net.id),obstacles=[...base,...otherPorts(net)],blocked=collision(obstacles,foreign),guide=[...obstacles,...trackGuides(foreign)];
    const root=local[0],remaining=local.slice(1).map(end=>({end,nearest:root,distance:dist(root.point,end.point)})),tree:Segment[]=[];
    treeByNet.set(net.id,tree);
    const exits=new Map(local.map(e=>[e,pinExit(e)]));
@@ -306,7 +329,7 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
       let best=Infinity;
       for(const goal of [...goals.values()].sort((p,q)=>dist(from,p)-dist(from,q)).slice(0,8)){
        if(dist(from,goal)>best)break;
-       const middle=findPath(from,goal,base,blocked,heading);
+       const middle=findPath(from,goal,guide,blocked,heading);
        if(!middle)continue;
        const candidate=stopAtTree(withoutLoops([b.point,...middle]),tree);
        const score=segments(candidate).reduce((n,[p,q])=>n+dist(p,q),0)+BEND_COST*Math.max(0,candidate.length-2)+shortJog(candidate)+(candidate.length>2&&dist(candidate.at(-2)!,candidate.at(-1)!)<1.25?5:0);
@@ -315,7 +338,7 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
      }else{
       const end=exits.get(a)!;
       if(!blocked(a.point,end,a.placed)&&!onForeign(a.point,foreign)){
-       const middle=findPath(from,end,base,blocked,heading,opposite(direction(a.point,end)));
+       const middle=findPath(from,end,guide,blocked,heading,opposite(direction(a.point,end)));
        if(middle)path=withoutLoops([b.point,...middle,a.point]);
       }
      }
@@ -349,7 +372,7 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
    const lead=pinExit(e),heading=direction(e.point,lead);
    const foreign=occupied(sheetRoutes,net.id),allSegments=sheetRoutes.flatMap(r=>segments(r.points));
    const tree=treeByNet.get(net.id)??[],attached=tree.some(([a,b])=>pointOnSegment(e.point,a,b));
-   const boxes=[...base,...labelBoxes.map(bounds=>({bounds}))],conflicts=collision(boxes,foreign);
+   const boxes=[...base,...otherPorts(net),...labelBoxes.map(bounds=>({bounds}))],conflicts=collision(boxes,foreign);
    const blocked:Blocked=(a,b,owner)=>conflicts(a,b,owner)||(!attached&&tree.some(([c,d])=>hit(a,b,c,d)!==undefined));
    type Approach='left'|'right'|'down';
    type Candidate={point:Point;tail:Point;approach:Approach;alignLeft:boolean;mark:Bounds;text:Bounds;dir:number};
@@ -389,22 +412,24 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
    }
    let choice:Candidate|undefined,points:Point[]=[],bestScore=Infinity;
    if(!blocked(e.point,lead,e.placed)){
-    const score=(c:Candidate)=>dist(lead,c.tail)+(dir.x&&c.dir!==heading&&!ground?6:0);
+    const wrongSide=(c:Candidate)=>!ground&&dir.x!==0&&(c.point.x-e.point.x)*dir.x<0;
+    const sidePenalty=(c:Candidate)=>(wrongSide(c)?24:0)+(!ground&&dir.x&&c.dir!==heading?12:0);
+    const score=(c:Candidate)=>dist(lead,c.tail)+sidePenalty(c);
     candidates.sort((a,b)=>score(a)-score(b));
     function tryPath(c:Candidate,search:boolean){
      const avoidLabel:Blocked=(a,b)=>blocked(a,b)||segmentHits(a,b,c.text)||segmentHits(a,b,c.mark);
-     const middle=findPath(lead,c.tail,search?[...boxes,{bounds:c.text},{bounds:c.mark}]:boxes,avoidLabel,heading,c.dir,search);
+     const middle=findPath(lead,c.tail,search?[...boxes,...trackGuides(foreign),{bounds:c.text},{bounds:c.mark}]:boxes,avoidLabel,heading,c.dir,search);
      if(!middle)return;
      let path=withoutLoops([e.point,...middle,c.point]);
      if(attached)path=stopAtTree(path.slice().reverse(),tree).reverse();
      const a=path.at(-2),b=path.at(-1);
      if(!a||!b||!same(b,c.point)||direction(a,b)!==c.dir||dist(a,b)<LABEL_LEAD-.001)return;
-     const cost=segments(path).reduce((sum,[a,b])=>sum+dist(a,b),0)+BEND_COST*Math.max(0,path.length-2)+shortJog(path);
+     const cost=segments(path).reduce((sum,[a,b])=>sum+dist(a,b),0)+8*Math.max(0,path.length-2)+shortJog(path)+sidePenalty(c);
      if(cost<bestScore){choice=c;points=path;bestScore=cost;}
     }
     let valid=0;
     for(const c of candidates){
-     if(choice&&dist(lead,c.tail)+LABEL_LEAD>bestScore+6)break;
+     if(choice&&!attached&&score(c)+LABEL_LEAD>bestScore)break;
      const previous=bestScore;tryPath(c,false);
      if(previous!==bestScore)valid++;
      if(valid>=6)break;
@@ -426,6 +451,7 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
     [a.points[0],a.points.at(-1)!].some(p=>bs.some(([u,v])=>pointOnSegment(p,u,v)))||
     [b.points[0],b.points.at(-1)!].some(p=>as.some(([u,v])=>pointOnSegment(p,u,v)));
    if(conflict)issues.push({severity:'warning',code:'AMBIGUOUS_CROSSING',message:`Лист ${sheet}: неоднозначное касание цепей ${a.net_id} и ${b.net_id}; электрически они не соединены`});
+   else if((a.locked||b.locked)&&as.some(([p,q])=>bs.some(([u,v])=>parallelTooClose(p,q,u,v))))issues.push({severity:'warning',code:'WIRE_SPACING',message:`Лист ${sheet}: между параллельными участками ${a.net_id} и ${b.net_id} меньше 3 мм`});
   }
  return {routes,labels,issues,retry};
 }

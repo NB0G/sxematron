@@ -15,8 +15,8 @@ def comp(code,name,prefix,sections,cat='Типовые УГО'):
  nums=list(dict.fromkeys(p['number'] for s in sections for p in s['pins']))
  return dict(format_version='1.0',component_code=code,name=name,category=cat,positional_prefix=prefix,physical_pins=[dict(number=n) for n in nums],variants=[dict(variant_code='01',name='Основной',sections=sections)])
 ends=[pin(1,-5,2.5,'left'),pin(2,15,2.5,'right')]
-r=comp('GEN_R','Резистор — универсальный шаблон','R',[section('BODY',graphics(p('rectangle',x=0,y=0,width=10,height=5)),ends)])
-c=comp('GEN_C','Конденсатор — универсальный шаблон','C',[section('BODY',graphics(p('line',x=4,y=-1,x2=4,y2=6),p('line',x=6,y=-1,x2=6,y2=6),p('line',x=0,y=2.5,x2=4,y2=2.5),p('line',x=6,y=2.5,x2=10,y2=2.5)),ends)])
+r=comp('GEN_R','Резистор — универсальный шаблон','R',[section('BODY',graphics(p('rectangle',x=0,y=.5,width=10,height=4)),ends)])
+c=comp('GEN_C','Конденсатор — универсальный шаблон','C',[section('BODY',graphics(p('line',x=4.25,y=-1.5,x2=4.25,y2=6.5),p('line',x=5.75,y=-1.5,x2=5.75,y2=6.5),p('line',x=0,y=2.5,x2=4.25,y2=2.5),p('line',x=5.75,y=2.5,x2=10,y2=2.5)),ends)])
 l=comp('GEN_L','Индуктивность — универсальный шаблон','L',[section('BODY',graphics(*[p('arc',x=x,y=2.5,r=1.25,start=180,end=360) for x in [1.25,3.75,6.25,8.75]]),ends)])
 d=comp('GEN_D','Диод — условный тестовый символ','VD',[section('BODY',graphics(p('polygon',points=[dict(x=2,y=-1),dict(x=2,y=6),dict(x=8,y=2.5)]),p('line',x=8,y=-1,x2=8,y2=6),p('line',x=0,y=2.5,x2=2,y2=2.5),p('line',x=8,y=2.5,x2=10,y2=2.5)),ends)])
 sw=comp('GEN_SWITCH','Контакт — тестовый символ','SA',[section('BODY',graphics(p('line',x=0,y=2.5,x2=8,y2=-1),p('circle',x=0,y=2.5,r=.7),p('circle',x=10,y=2.5,r=.7)),ends)])

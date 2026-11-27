@@ -24,9 +24,9 @@
               "id": "g0",
               "kind": "rectangle",
               "x": 0,
-              "y": 0,
+              "y": 0.5,
               "width": 10,
-              "height": 5
+              "height": 4
             }
           ],
           "pins": [

@@ -277,3 +277,19 @@ test('routing cache reuses unaffected sheets and invalidates changed geometry an
  swapped.sheets.reverse();
  assert.deepEqual((await build(swapped)).misses,['sheet_2','sheet_1']);
 });
+
+test('an existing stock resistor is presented at 10 by 4 mm without a database rewrite',async t=>{
+ const {app,dataDir}=await fixture(t);
+ const def=(JSON.parse(readFileSync(new URL('../examples/library.json',import.meta.url),'utf8')) as ComponentDefinition[]).find(d=>d.component_code==='GEN_R')!;
+ const old=structuredClone(def);
+ Object.assign(old.variants[0].sections[0].graphics[0],{height:5,y:0});
+ const created=await app.inject({method:'POST',url:'/api/components',payload:old});
+ assert.equal(created.statusCode,201);
+ assert.deepEqual((await app.inject('/api/components/GEN_R')).json(),def);
+ assert.deepEqual((await app.inject('/api/library/export')).json().components,[def]);
+ const db=new DatabaseSync(path.join(dataDir,'library.sqlite'),{readOnly:true});
+ try{
+  const row=db.prepare('SELECT definition FROM components WHERE code=?').get('GEN_R')!;
+  assert.deepEqual(JSON.parse(String(row.definition)),old);
+ }finally{db.close();}
+});
