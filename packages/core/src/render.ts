@@ -1,5 +1,6 @@
-import type {Primitive,Resolved,PlacedSection,ComponentDefinition,Point,WireRoute} from './types.js';
-import {PAGE,pinPosition,pointOnSegment,round,same,sectionBounds,pinDirection,transform,hasTurnedCaption,sectionCaption} from './geometry.js';
+import {junctionPoints} from './conductors.js';
+import type {Primitive,Resolved,PlacedSection,ComponentDefinition,WireRoute} from './types.js';
+import {PAGE,pinPosition,round,sectionBounds,pinDirection,transform,hasTurnedCaption,sectionCaption} from './geometry.js';
 import {DRAWING_FONT_FAMILY,DRAWING_FONT_SCALE,bundledDrawingFont,outlineSvgText,embedDrawingFont} from './font.js';
 import {FONT_BASE64} from './font-data.js';
 import {strToU8,zipSync} from 'fflate';
@@ -16,11 +17,11 @@ function renderSection(s:PlacedSection,interactive:boolean){const attrs=interact
  }else body+=text(p.x+off.x,p.y+off.y,p.number,2.5,p.side==='right'?'end':'start');if(interactive)body+=`<circle cx="${p.x}" cy="${p.y}" r="1.4" fill="transparent" stroke="none" data-pin-number="${attr(p.number)}" data-instance-id="${attr(s.instance.id)}"/>`;}
  const hit=sectionBounds(s.section,0,false,s.instance);const suffix=s.section.section_id==='BODY'?'':'.'+s.section.section_id;
  const label=(s.instance.designator??s.instance.id)+suffix;
- if(hasTurnedCaption(s.rotation)){
-  const p=sectionCaption(s.section,s.rotation,s.mirror);
+ const p=sectionCaption(s.section,s.rotation,s.mirror,s.instance);
+ if(hasTurnedCaption(s.rotation)||s.mirror){
   const inverse=`${s.mirror?'scale(-1 1) ':''}rotate(${-s.rotation})`;
   body+=`<g transform="${inverse}">${text(p.x,p.y,label)}${s.instance.value?text(p.x,p.y-4,s.instance.value):''}</g>`;
- }else{body+=text(0,-4,label,3.5);if(s.instance.value)body+=text(0,-8,s.instance.value,3.5);}
+ }else{body+=text(p.x,p.y,label,3.5);if(s.instance.value)body+=text(p.x,p.y-4,s.instance.value,3.5);}
  return `<g${attrs} transform="translate(${n(s.position.x)} ${n(s.position.y)}) rotate(${s.rotation}) scale(${s.mirror?-1:1} 1)"${interactive?' class="schematic-section"':''}>${interactive?`<rect x="${hit.x-1}" y="${hit.y-1}" width="${hit.right-hit.x+2}" height="${hit.bottom-hit.y+2}" fill="transparent" stroke="none"/>`:''}${body}</g>`;
 }
 function frame(res:Resolved,sheetId:string){const d=res.schematic.document,number=res.schematic.sheets.findIndex(s=>s.id===sheetId)+1,count=res.schematic.sheets.length;let s=`<rect x="20" y="5" width="395" height="287" stroke-width="0.7"/><rect x="230" y="237" width="185" height="55" stroke-width="0.7"/>`;
@@ -30,15 +31,16 @@ function frame(res:Resolved,sheetId:string){const d=res.schematic.document,numbe
  s+=text(231,264,'Разраб.',2.5)+text(249,264,d.author,2.5)+text(231,272,'Пров.',2.5)+text(249,272,d.checked,2.5)+text(231,279,'Утв.',2.5)+text(249,279,d.approved,2.5)+text(231,287,'Дата',2.5)+text(249,287,d.date,2.5);
  s+=text(379,264,'Лист',2.5,'middle')+text(403,264,'Листов',2.5,'middle')+text(379,272,number,3.5,'middle')+text(403,272,count,3.5,'middle')+text(332,279,d.organization,3.5,'middle')+text(332,289,'Формат А3',2.5,'middle');return s;
 }
-function junctions(routes:WireRoute[]){const out:Point[]=[];const nets=new Set(routes.map(r=>r.net_id));for(const net of nets){const rs=routes.filter(r=>r.net_id===net);const segments=rs.flatMap(r=>r.points.slice(1).map((b,i)=>[r.points[i],b] as [Point,Point]));const candidates=rs.flatMap(r=>r.points);for(let i=0;i<segments.length;i++)for(let j=i+1;j<segments.length;j++){const [a,b]=segments[i],[c,d]=segments[j];if((a.x===b.x)!==(c.x===d.x)){const p=a.x===b.x?{x:a.x,y:c.y}:{x:c.x,y:a.y};if(pointOnSegment(p,a,b)&&pointOnSegment(p,c,d))candidates.push(p);}}for(const p of candidates){const directions=new Set<string>();for(const [a,b]of segments)if(pointOnSegment(p,a,b)){if(a.x<p.x||b.x<p.x)directions.add('L');if(a.x>p.x||b.x>p.x)directions.add('R');if(a.y<p.y||b.y<p.y)directions.add('U');if(a.y>p.y||b.y>p.y)directions.add('D');}if(directions.size>=3&&!out.some(a=>same(a,p)))out.push(p);}}
- return out.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="0.8" fill="#111" stroke="none"/>`).join('');}
+function junctions(routes:WireRoute[]){
+ return junctionPoints(routes).map(p=>`<circle cx="${p.x}" cy="${p.y}" r="0.8" fill="#111" stroke="none"/>`).join('');
+}
 export function renderSheet(res:Resolved,sheetId:string,options:{interactive?:boolean;outlineFont?:any}={}):string{
  const inter=!!options.interactive,rs=res.routes.filter(r=>r.sheet_id===sheetId);let s=`<svg xmlns="http://www.w3.org/2000/svg" width="420mm" height="297mm" viewBox="0 0 420 297" role="img" aria-label="${attr(res.schematic.document.title)}" font-family="${DRAWING_FONT_FAMILY}" fill="none" stroke="#111" stroke-width="0.35" stroke-linecap="round" stroke-linejoin="round"><title>${escapeXml(res.schematic.document.title)}</title><rect x="0" y="0" width="420" height="297" fill="white" stroke="none"/>${frame(res,sheetId)}`;
  if(inter)s+='<g class="schematic-wiring">';
  for(const r of rs){const points=r.points.map(p=>`${n(p.x)},${n(p.y)}`).join(' ');if(inter)s+=`<polyline points="${points}" stroke="transparent" stroke-width="2" data-route-id="${attr(r.id)}" data-net-id="${attr(r.net_id)}" class="schematic-route"/>`;s+=`<polyline points="${points}"${inter?` data-route-id="${attr(r.id)}" data-net-id="${attr(r.net_id)}" class="schematic-route"`:''}/>`;}
  s+=junctions(rs);if(inter)s+='</g>';for(const a of res.sections.filter(a=>a.sheet_id===sheetId))s+=renderSection(a,inter);
  if(inter)s+='<g class="schematic-wiring">';
- for(const label of res.labels.filter(a=>a.sheet_id===sheetId)){
+ for(const label of res.labels.filter(a=>a.sheet_id===sheetId&&!a.unpaired)){
   const {x,y}=label.point;
   const extra=inter?`data-label-net="${attr(label.net_id)}" data-instance-id="${attr(label.pin?.instance_id)}" data-pin-number="${attr(label.pin?.number)}"`:'';
   if(label.role==='ground'){
@@ -49,7 +51,7 @@ export function renderSheet(res:Resolved,sheetId:string,options:{interactive?:bo
    s+=`<path ${extra} d="M ${n(bx+dy*1.25)} ${n(by-dx*1.25)} L ${n(x)} ${n(y)} L ${n(bx-dy*1.25)} ${n(by+dx*1.25)}"/>`;
   }
   const left=label.alignLeft??false;
-  if(label.text)s+=text(x+(left?-1:1),y-1.5,label.text,3.5,left?'end':'start',extra);
+  if(label.text)s+=text(x+(left?-1:1),y-1.5+(label.textShift??0),label.text,3.5,left?'end':'start',extra);
  }
  if(inter)s+='</g>';s+='</svg>';return options.outlineFont?outlineSvgText(s,options.outlineFont):s;
 }

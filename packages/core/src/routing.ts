@@ -1,19 +1,21 @@
+import {betterQuality,measureQuality} from './quality.js';
+import {continuationPairs,PARALLEL_WIRE_SPACING} from './connections.js';
+import {contactPoints,parallelGap,physicalPinKey} from './conductors.js';
 import type {Schematic,PlacedSection,WireRoute,Point,Issue,RenderedLabel,Terminal,Pin,Net} from './types.js';
 import {routingLimits,routingSettings} from './types.js';
-import {PAGE,placedBodyBounds,placedBounds,pinPosition,pinDirection,intersects,simplify,same,pointOnSegment,round,type Bounds} from './geometry.js';
-import {bundledDrawingFont,DRAWING_FONT_SCALE} from './font.js';
+import {PAGE,WIRING_STAMP,placedBodyBounds,pinPosition,pinDirection,intersects,simplify,same,pointOnSegment,round,printedTextBounds,segmentHitsBounds as segmentHits,drawingTextBounds,type Bounds} from './geometry.js';
+
 
 type Endpoint={point:Point;placed:PlacedSection;pin:Pin;terminal:Terminal};
 type Segment=[Point,Point];
 type Box={owner?:PlacedSection;bounds:Bounds};
 const STEP=PAGE.grid;
-const CLEARANCE=.25; // Pin and caption envelope, separate from the actual case.
 export const BODY_CLEARANCE=routingLimits.bodyClearance.default;
-const LABEL_LEAD=3.75;
-export const PARALLEL_WIRE_SPACING=3;
+const LABEL_LEAD=2.4;
+export {PARALLEL_WIRE_SPACING};
 const BEND_COST=6;
 const MIN_X=21, MAX_X=414, MIN_Y=6, MAX_Y=291;
-const stamp:Bounds={x:PAGE.stamp.x-1,y:PAGE.stamp.y-1,right:415,bottom:292};
+const stamp=WIRING_STAMP;
 const dirs=[{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}];
 const direction=(a:Point,b:Point)=>a.x===b.x?(a.y<b.y?1:3):(a.x<b.x?0:2);
 const opposite=(dir:number)=>(dir+2)%4;
@@ -43,21 +45,8 @@ class Heap {
  get length(){return this.data.length;}
 }
 
-function segmentHits(a:Point,b:Point,box:Bounds){
- if(a.y===b.y)return a.y>box.y&&a.y<box.bottom&&Math.max(a.x,b.x)>box.x&&Math.min(a.x,b.x)<box.right;
- if(a.x===b.x)return a.x>box.x&&a.x<box.right&&Math.max(a.y,b.y)>box.y&&Math.min(a.y,b.y)<box.bottom;
- return true;
-}
-
-function overlap(a:Point,b:Point,c:Point,d:Point){
- return (a.x===b.x&&a.x===c.x&&c.x===d.x&&Math.min(Math.max(a.y,b.y),Math.max(c.y,d.y))-Math.max(Math.min(a.y,b.y),Math.min(c.y,d.y))>.001)||
- (a.y===b.y&&a.y===c.y&&c.y===d.y&&Math.min(Math.max(a.x,b.x),Math.max(c.x,d.x))-Math.max(Math.min(a.x,b.x),Math.min(c.x,d.x))>.001);
-}
-
 function hit(a:Point,b:Point,c:Point,d:Point):Point|undefined{
- if(a.x===b.x&&c.x===d.x&&a.x===c.x){const y=clamp(a.y,c.y,d.y);if(between(y,a.y,b.y))return{x:a.x,y};}
- if(a.y===b.y&&c.y===d.y&&a.y===c.y){const x=clamp(a.x,c.x,d.x);if(between(x,a.x,b.x))return{x,y:a.y};}
- if((a.x===b.x)!==(c.x===d.x)){const p=a.x===b.x?{x:a.x,y:c.y}:{x:c.x,y:a.y};if(pointOnSegment(p,a,b)&&pointOnSegment(p,c,d))return p;}
+ return contactPoints(a,b,c,d).sort((p,q)=>dist(a,p)-dist(a,q))[0];
 }
 
 function stopAtTree(points:Point[],tree:Segment[]){
@@ -94,9 +83,7 @@ function withoutLoops(points:Point[]){
 type Occupancy={segments:Segment[];tracks:Map<string,Segment[]>;ends:Map<string,Point[]>};
 const bucket=(n:number)=>Math.floor(n/PARALLEL_WIRE_SPACING);
 function parallelTooClose(a:Point,b:Point,c:Point,d:Point){
- if(a.x===b.x&&c.x===d.x)return Math.abs(a.x-c.x)<PARALLEL_WIRE_SPACING-.001&&Math.min(Math.max(a.y,b.y),Math.max(c.y,d.y))-Math.max(Math.min(a.y,b.y),Math.min(c.y,d.y))>.001;
- if(a.y===b.y&&c.y===d.y)return Math.abs(a.y-c.y)<PARALLEL_WIRE_SPACING-.001&&Math.min(Math.max(a.x,b.x),Math.max(c.x,d.x))-Math.max(Math.min(a.x,b.x),Math.min(c.x,d.x))>.001;
- return false;
+ return (parallelGap(a,b,c,d)??Infinity)<PARALLEL_WIRE_SPACING-.001;
 }
 function trackGuides(occupancy:Occupancy):Box[]{
  return occupancy.segments.map(([a,b])=>({bounds:a.x===b.x
@@ -108,35 +95,33 @@ function occupied(wires:WireRoute[],net:string){
  const result:Occupancy={segments:[],tracks:new Map(),ends:new Map()};
  for(const wire of wires)if(wire.net_id!==net){
   for(const s of segments(wire.points)){result.segments.push(s);addToMap(result.tracks,s[0].x===s[1].x?'x'+bucket(s[0].x):'y'+bucket(s[0].y),s);}
-  for(const p of [wire.points[0],wire.points.at(-1)!]){addToMap(result.ends,'x'+p.x,p);addToMap(result.ends,'y'+p.y,p);}
+  for(const p of wire.points){addToMap(result.ends,'x'+p.x,p);addToMap(result.ends,'y'+p.y,p);}
  }
  return result;
 }
 
-type Blocked=(a:Point,b:Point,owner?:PlacedSection)=>boolean;
+type Blocked=((a:Point,b:Point,owner?:PlacedSection)=>boolean)&{turn?:(p:Point)=>boolean;crossingCost?:(path:Point[])=>number};
 function collision(boxes:Box[],foreign:Occupancy):Blocked{
- return (a,b,owner)=>{
+ const blocked:Blocked=(a,b,owner)=>{
   if(!inFrame(a)||!inFrame(b)||boxes.some(o=>(!owner||o.owner!==owner)&&segmentHits(a,b,o.bounds)))return true;
   if(same(a,b))return false;
   const axis=a.x===b.x?'x':'y',at=axis==='x'?a.x:a.y,k=bucket(at);
   for(let i=k-1;i<=k+1;i++)if(foreign.tracks.get(axis+i)?.some(([c,d])=>parallelTooClose(a,b,c,d)))return true;
   return !!foreign.ends.get(axis+at)?.some(p=>pointOnSegment(p,a,b));
  };
+ blocked.turn=p=>onForeign(p,foreign);
+ blocked.crossingCost=path=>segments(path).reduce((cost,[a,b])=>cost+foreign.segments.filter(([c,d])=>(a.x===b.x)!==(c.x===d.x)&&hit(a,b,c,d)).length*4,0);
+ return blocked;
 }
 const onForeign=(p:Point,foreign:Occupancy)=>foreign.segments.some(([a,b])=>pointOnSegment(p,a,b));
 
-function exit(e:Endpoint,box:Bounds){
- const d=pinDirection(e.placed,e.pin),p=e.point;
- return {x:round(d.x<0?box.x:d.x>0?box.right:p.x),y:round(d.y<0?box.y:d.y>0?box.bottom:p.y)};
-}
-
 // Try low-bend Manhattan paths first. Exact pin ordinates and obstacle edges are
 // retained in the fallback search, so just snapping cannot create a staircase.
-function findPath(start:Point,end:Point,boxes:Box[],blocked:Blocked,from:number,to?:number,search=true):Point[]|undefined{
+function findPath(start:Point,end:Point,boxes:Box[],blocked:Blocked,from:number,to?:number,search=true,onBudget?:()=>void):Point[]|undefined{
  if(!inFrame(start)||!inFrame(end))return;
  if(same(start,end))return to===opposite(from)?undefined:[start];
  const bend=(a:number,b:number)=>a===b?0:BEND_COST;
- const score=(path:Point[])=>{let cost=shortJog(path),last=from;for(const [a,b]of segments(path)){const next=direction(a,b);if(next===opposite(last)||blocked(a,b))return Infinity;cost+=dist(a,b)+bend(last,next);last=next;}return to===undefined?cost:to===opposite(last)?Infinity:cost+bend(last,to);};
+ const score=(path:Point[])=>{let cost=shortJog(path)+(blocked.crossingCost?.(path)??0),last=from;for(const [a,b]of segments(path)){const next=direction(a,b);if(next===opposite(last)||next!==last&&blocked.turn?.(a)||blocked(a,b))return Infinity;cost+=dist(a,b)+bend(last,next);last=next;}return to===undefined?cost:to===opposite(last)?Infinity:cost+bend(last,to);};
  const mx=round((start.x+end.x)/2),my=round((start.y+end.y)/2);
  const proposals=[
   // Equal-cost bends should use the middle of the gap, not hug a pin.
@@ -187,7 +172,7 @@ function findPath(start:Point,end:Point,boxes:Box[],blocked:Blocked,from:number,
    continue;
   }
   for(let k=0;k<dirs.length;k++){
-   if(k===opposite(heading))continue;
+   if(k===opposite(heading)||k!==heading&&blocked.turn?.(p))continue;
    const nx=x+dirs[k].x,ny=y+dirs[k].y;if(nx<0||nx>=w||ny<0||ny>=h)continue;
    const j=id(nx,ny,k);if(closed[j])continue;
    const q={x:xs[nx],y:ys[ny]},grow=cost[i]+dist(p,q)+bend(heading,k),estimate=grow+dist(q,end);
@@ -195,35 +180,36 @@ function findPath(start:Point,end:Point,boxes:Box[],blocked:Blocked,from:number,
    cost[j]=grow;parent[j]=i;heap.push({id:j,score:estimate});
   }
  }
+ if(visited===60000&&heap.length&&!best)onBudget?.();
  return best;
 }
 
-export function labelBounds(text:string,point:Point,left:boolean):Bounds{
- const font=bundledDrawingFont(),size=3.5*DRAWING_FONT_SCALE;
- let width:number,b:Bounds;
- try{
-  width=font.getAdvanceWidth(text,size,{kerning:true});
-  const {x1,y1,x2,y2}=font.getPath(text,0,0,size,{kerning:true}).getBoundingBox();
-  b={x:x1,y:y1,right:x2,bottom:y2};
- }catch{
-  width=[...text].length*3.5;
-  b={x:0,y:-3.5,right:width,bottom:.5};
- }
- const x=point.x+(left?-1-width:1),y=point.y-1.5;
- return {x:x+b.x-.15,right:x+b.right+.15,y:y+b.y-.15,bottom:y+b.bottom+.15};
+export function labelBounds(text:string,point:Point,left:boolean,shift=0):Bounds{
+ const b=drawingTextBounds(text,point.x+(left?-1:1),point.y-1.5+shift,3.5,left?'right':'left');
+ return {x:b.x-.15,right:b.right+.15,y:b.y-.15,bottom:b.bottom+.15};
+}
+
+export function labelMarkBounds(point:Point,approach:NonNullable<RenderedLabel['approach']>,ground:boolean):Bounds{
+ const {x,y}=point;
+ if(ground)return {x:x-3.7,right:x+3.7,y:y-.2,bottom:y+3.95};
+ const {x:dx,y:dy}=dirs[['right','down','left','up'].indexOf(approach)];
+ return {
+  x:x-2*Math.max(0,dx)-1.25*Math.abs(dy)-.2,right:x-2*Math.min(0,dx)+1.25*Math.abs(dy)+.2,
+  y:y-2*Math.max(0,dy)-1.25*Math.abs(dx)-.2,bottom:y-2*Math.min(0,dy)+1.25*Math.abs(dx)+.2
+ };
 }
 
 function terminalGraph(sections:PlacedSection[]){
  const map=new Map<string,Endpoint>();
- for(const placed of sections)for(const pin of placed.section.pins)map.set(`${placed.instance.id}\0${pin.number}`,{point:pinPosition(placed,pin),placed,pin,terminal:{instance_id:placed.instance.id,number:pin.number}});
+ for(const placed of sections)for(const pin of placed.section.pins)map.set(physicalPinKey(placed.instance.id,pin.number),{point:pinPosition(placed,pin),placed,pin,terminal:{instance_id:placed.instance.id,number:pin.number}});
  return map;
 }
-const terminalKey=(t:Terminal)=>`${t.instance_id}\0${t.number}`;
+const terminalKey=(t:Terminal)=>physicalPinKey(t.instance_id,t.number);
 
 export type RoutedSheets={routes:WireRoute[];labels:RenderedLabel[];issues:Issue[]};
 export type SheetRouteMemo=(id:string,calculate:()=>RoutedSheets)=>RoutedSheets;
 
-function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoints:Map<string,Endpoint>,netIds:Map<Net,number>,reserved:Set<string>,first?:Net,contactsFirst=false):RoutedSheets&{retry?:Net}{
+function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoints:Map<string,Endpoint>,netIds:Map<Net,number>,reserved:Set<string>,pairs:ReturnType<typeof continuationPairs>,first?:Net,contactsFirst=false,priorityPins:ReadonlySet<string>=new Set()):RoutedSheets&{retry?:Net}{
  const routes:WireRoute[]=[],labels:RenderedLabel[]=[],issues:Issue[]=[];
  let retry:Net|undefined;
  const settings=routingSettings(s.layout);
@@ -238,52 +224,37 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
  };
   const bodies=sections.filter(a=>a.sheet_id===sheet);
   // Reservations for possible labels help auto placement, but are not ink.
-  const physical=new Map(bodies.map(a=>[a,placedBounds({...a,label_padding:undefined})]));
-  const padded=new Map(bodies.map(a=>{
-   const b=placedBounds({...a,label_padding:undefined},CLEARANCE);
-   return [a,{x:round(b.x),y:round(b.y),right:round(b.right),bottom:round(b.bottom)}];
-  }));
   const bodyClearance=new Map(bodies.flatMap(a=>{const b=placedBodyBounds(a,settings.bodyClearance);return b?[[a,b] as const]:[];}));
-  const base:Box[]=[...padded,...bodyClearance].map(([owner,bounds])=>({owner,bounds}));
+  const base:Box[]=[...bodyClearance].map(([owner,bounds])=>({owner,bounds}));
+  for(const a of bodies)for(const bounds of printedTextBounds(a))base.push({bounds});
   function pinExit(e:Endpoint){
-   const p=exit(e,padded.get(e.placed)!),c=bodyClearance.get(e.placed);
-   if(!c)return p;
-   const d=pinDirection(e.placed,e.pin);
-   if(d.x&&p.y>c.y&&p.y<c.bottom)p.x=d.x<0?Math.min(p.x,c.x):Math.max(p.x,c.right);
-   if(d.y&&p.x>c.x&&p.x<c.right)p.y=d.y<0?Math.min(p.y,c.y):Math.max(p.y,c.bottom);
-   return p;
+   const c=bodyClearance.get(e.placed),d=pinDirection(e.placed,e.pin),{x,y}=e.point;
+   let lead=.75;
+   if(c&&d.x&&y>c.y&&y<c.bottom)lead=Math.max(lead,d.x>0?c.right-x:x-c.x);
+   if(c&&d.y&&x>c.x&&x<c.right)lead=Math.max(lead,d.y>0?c.bottom-y:y-c.y);
+   return {x:round(x+d.x*lead),y:round(y+d.y*lead)};
   }
   base.push({bounds:stamp});
-  // Leave an exit at pins of other nets, before their wires or label stubs
-  // have been drawn. Otherwise an earlier route can fence a pin in.
-  const portBoxes=s.nets.flatMap(net=>net.pins.flatMap(pin=>{
-   const e=endpoints.get(terminalKey(pin));
-   if(!e||e.placed.sheet_id!==sheet)return [];
-   const d=pinDirection(e.placed,e.pin),{x,y}=e.point,xx=x+3*d.x,yy=y+3*d.y;
-   return [{netId:net.id,bounds:{x:round(Math.min(x,xx)-1.25),right:round(Math.max(x,xx)+1.25),y:round(Math.min(y,yy)-1.25),bottom:round(Math.max(y,yy)+1.25)}}];
+  const assignedNet=new Map(s.nets.flatMap(net=>net.pins.map(pin=>[terminalKey(pin),net.id] as const)));
+  const portBoxes=bodies.flatMap(placed=>placed.section.pins.map(pin=>{
+   const terminal={instance_id:placed.instance.id,number:pin.number},id=terminalKey(terminal),point=pinPosition(placed,pin);
+   const d=pinDirection(placed,pin),{x,y}=point;
+   const start=assignedNet.has(id)?1.25:.25;
+   const denseVertical=d.y!==0&&placed.section.pins.filter(other=>{
+    const pointing=pinDirection(placed,other);
+    return pointing.y===d.y&&assignedNet.has(physicalPinKey(placed.instance.id,other.number));
+   }).length>=4;
+   const far=assignedNet.has(id)?denseVertical?10:3:.25;
+   const xx=x+d.x*far,yy=y+d.y*far,ax=x-d.x*(pin.length??5),ay=y-d.y*(pin.length??5);
+   const bounds={x:round(Math.min(x,xx,ax)-start),right:round(Math.max(x,xx,ax)+start),y:round(Math.min(y,yy,ay)-start),bottom:round(Math.max(y,yy,ay)+start)};
+   const lead={x:Math.min(x,ax,x+d.x*3)-.8,right:Math.max(x,ax,x+d.x*3)+.8,
+    y:Math.min(y,ay,y+d.y*3)-.8,bottom:Math.max(y,ay,y+d.y*3)+.8};
+   return {netId:assignedNet.get(id),id,bounds,lead};
   }));
   const otherPorts=(net:Net)=>portBoxes.filter(b=>b.netId!==net.id);
   const labelBoxes:Bounds[]=[];
   const sheetRoutes=locked.slice();
-  for(const r of locked){
-   const ends=s.nets.find(n=>n.id===r.net_id)?.pins.map(pin=>endpoints.get(terminalKey(pin)))??[];
-   const parts=segments(r.points);
-   const hits=(owner:PlacedSection,box:Bounds)=>parts.some(([a,b])=>segmentHits(a,b,box)&&!ends.some(e=>{
-    if(!e||e.placed!==owner)return false;
-    const other=same(a,e.point)?b:same(b,e.point)?a:undefined;
-    if(!other)return false;
-    const d=pinDirection(owner,e.pin);
-    return d.x?other.y===e.point.y&&(other.x-e.point.x)*d.x>0:other.x===e.point.x&&(other.y-e.point.y)*d.y>0;
-   }));
-   const blockedBy=bodies.find(owner=>hits(owner,physical.get(owner)!));
-   if(blockedBy)issues.push({severity:'warning',code:'LOCKED_ROUTE_OBSTACLE',message:`Ручной маршрут ${r.id} проходит через ${blockedBy.instance.designator??blockedBy.instance.id}/${blockedBy.section.section_id}`});
-   else{
-    const close=[...bodyClearance].find(([owner,box])=>hits(owner,box));
-    if(close)issues.push({severity:'warning',code:'LOCKED_ROUTE_CLEARANCE',message:`Ручной маршрут ${r.id} близко к корпусу ${close[0].instance.designator??close[0].instance.id}; требуется зазор`});
-   }
-  }
   const add=(r:WireRoute)=>{routes.push(r);sheetRoutes.push(r);};
-  const treeByNet=new Map<string,Segment[]>();
   // A net spanning k sheets needs k-1 reciprocal links, not k copies
   // listing all destinations. Local names remain valid for disconnected stubs.
   const pending:{net:Net;end:Endpoint;peer?:number}[]=[];
@@ -292,51 +263,131 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
    const key=JSON.stringify([net.id,terminalKey(end.terminal),peer]);
    if(!scheduled.has(key)){scheduled.add(key);pending.push({net,end,peer});}
   };
+  function portAnchor(net:Net,local:Endpoint[],index:number,peer:number){
+   return local.find(e=>manualLabels.has(labelKey(net.id,e.terminal,peer)))??local[index%local.length];
+  }
   const density=settings.wireDensity;
   const plans=(first?[first,...s.nets.filter(n=>n!==first)]:s.nets).flatMap(net=>{
    const ends=net.pins.map(p=>endpoints.get(terminalKey(p))).filter((e):e is Endpoint=>!!e);
    const local=ends.filter(e=>e.placed.sheet_id===sheet);
    if(!local.length)return [];
-   const used=new Set(ends.map(e=>e.placed.sheet_id));
-   const pages=s.sheets.flatMap((sh,i)=>used.has(sh.id)?[i]:[]),idx=pages.indexOf(sheetIndex);
-   const peers=net.role==='ground'?[]:pages.slice(Math.max(0,idx-1),idx+2).filter(i=>i!==sheetIndex);
+   const peers=pairs.flatMap(pair=>pair.net!==net.id?[]:pair.from===sheet?[s.sheets.findIndex(sh=>sh.id===pair.to)]:pair.to===sheet?[s.sheets.findIndex(sh=>sh.id===pair.from)]:[]);
    const fixed=locked.filter(r=>r.net_id===net.id);
    // Wire preference considers local geometric span and local fan-out only.
    // A distant sheet is not a reason to split a compact circuit on this one.
-   const xs=local.map(e=>e.point.x),ys=local.map(e=>e.point.y);
-   const span=Math.max(...xs)-Math.min(...xs)+Math.max(...ys)-Math.min(...ys);
-   const isLabel=net.render==='label'||net.render==='auto'&&(density===0||local.length>2+Math.floor(density*.12)||span>25+3.1*density);
+   const isLabel=net.render==='label'||net.render==='auto'&&density===0;
    return [{net,local,peers,fixed,isLabel}];
   });
-  const namedTrees=new Set<string>();
+
+  function wireGroups(local:Endpoint[],net:Net){
+   if(net.render!=='auto')return [local];
+   const remaining=new Set(local),groups:Endpoint[][]=[];
+   const limit=6+density*2.1;
+   while(remaining.size){
+    const start=remaining.values().next().value!;
+    remaining.delete(start);
+    const group=[start];groups.push(group);
+    for(const a of group)for(const b of remaining){
+     const dx=b.point.x-a.point.x,dy=b.point.y-a.point.y;
+     const u=pinDirection(a.placed,a.pin),v=pinDirection(b.placed,b.pin);
+     const estimate=dist(a.point,b.point)+8*Number(dx!==0&&dy!==0)+12*Number(u.x*dx+u.y*dy<0)+12*Number(v.x*dx+v.y*dy>0);
+     if(estimate<=limit){remaining.delete(b);group.push(b);}
+    }
+   }
+   return groups;
+  }
   if(contactsFirst){
    for(const {net,local,peers,isLabel,fixed} of plans)if(!fixed.length&&(isLabel||local.length===1)){
-    for(const [i,peer] of peers.entries())enqueue(net,local[i%local.length],peer);
-    for(const [i,e] of local.entries())if(i>=peers.length)enqueue(net,e);
+    for(const [i,peer] of peers.entries())enqueue(net,portAnchor(net,local,i,peer),peer);
+    for(const e of local)if(!peers.some((peer,i)=>portAnchor(net,local,i,peer)===e))enqueue(net,e);
    }
    placeLabels();
   }
   for(const {net,local,peers,fixed,isLabel} of plans){
-   for(const [i,peer] of peers.entries())enqueue(net,local[i%local.length],peer);
+   for(const [i,peer] of peers.entries())enqueue(net,portAnchor(net,local,i,peer),peer);
    if(isLabel&&!fixed.length){
-    for(const [i,e] of local.entries())if(i>=peers.length)enqueue(net,e);
+    for(const e of local)if(!peers.some((peer,i)=>portAnchor(net,local,i,peer)===e))enqueue(net,e);
     continue;
    }
    if(!peers.length&&(local.length===1||net.role==='ground'))enqueue(net,local[0]);
+   if(!fixed.length&&local.length===1)continue;
+   const foreign=occupied(sheetRoutes,net.id);
+   const obstacles:Box[]=[...base,...otherPorts(net),...labelBoxes.map(bounds=>({bounds}))];
+   const blocked=collision(obstacles,foreign),guide=[...obstacles,...trackGuides(foreign)];
+   function toTree(start:Point,lead:Point,heading:number,tree:Segment[],search=true){
+    const goals=new Map<string,Point>();
+    for(const [a,b] of tree){
+     const p=a.x===b.x?{x:a.x,y:clamp(lead.y,a.y,b.y)}:{x:clamp(lead.x,a.x,b.x),y:a.y};
+     for(const goal of [p,a,b])if(!onForeign(goal,foreign))goals.set(`${goal.x},${goal.y}`,goal);
+    }
+    let best:Point[]|undefined,cost=Infinity;
+    const ordered=[...goals.values()].sort((a,b)=>dist(lead,a)-dist(lead,b)).slice(0,8);
+    for(const goal of ordered){
+     if(dist(lead,goal)>cost)break;
+     const middle=findPath(lead,goal,guide,blocked,heading,undefined,false);
+     if(!middle)continue;
+     const path=stopAtTree(withoutLoops([start,...middle]),tree);
+     const score=segments(path).reduce((n,[a,b])=>n+dist(a,b),0)+BEND_COST*Math.max(0,path.length-2)+shortJog(path);
+     if(score<cost&&!onForeign(path.at(-1)!,foreign)){best=path;cost=score;}
+    }
+    if(best||!search)return best;
+    for(const goal of ordered.slice(0,4)){
+     const middle=findPath(lead,goal,guide,blocked,heading);
+     if(!middle)continue;
+     const path=stopAtTree(withoutLoops([start,...middle]),tree);
+     if(!onForeign(path.at(-1)!,foreign))return path;
+    }
+   }
    if(fixed.length){
-    const locked=fixed.flatMap(r=>segments(r.points));
-    const reached=new Set<number>([0]);const visit=[0];
-    while(visit.length){const j=visit.pop()!;for(let i=0;i<locked.length;i++)if(!reached.has(i)&&hit(...locked[i],...locked[j])){reached.add(i);visit.push(i);}}
-    if(reached.size!==locked.length||local.some(e=>![...reached].some(i=>pointOnSegment(e.point,...locked[i]))))issues.push({severity:'error',code:'LOCKED_ROUTE_DISCONNECTED',message:`${net.id}: закреплённые провода не образуют связную цепь до всех выводов; исправьте маршрут или снимите фиксацию`});
-    treeByNet.set(net.id,locked);
+    const pendingSegments=new Set(fixed.flatMap(w=>segments(w.points)));
+    const seed=[...pendingSegments].find(part=>local.some(e=>pointOnSegment(e.point,...part)));
+    const tree:Segment[]=[];
+    function grow(first:Segment){
+     pendingSegments.delete(first);tree.push(first);
+     for(const part of tree)for(const other of pendingSegments)if(hit(...part,...other)){
+      pendingSegments.delete(other);tree.push(other);
+     }
+    }
+    const record=(points:Point[],ordinal:number)=>{
+     if(points.length<2)return;
+     add({id:routeId('route',net,ordinal),net_id:net.id,sheet_id:sheet,points});
+     tree.push(...segments(points));
+    };
+    let serial=0;
+    if(seed){
+     grow(seed);
+     for(const part of pendingSegments){
+      let joined=false;
+      for(const point of part){
+       for(const heading of [0,1,2,3]){
+        const path=toTree(point,point,heading,tree,false);
+        if(!path||path.length<2)continue;
+        record(path,serial++);grow(part);joined=true;break;
+       }
+       if(joined)break;
+      }
+     }
+     for(const e of local){
+      if(tree.some(part=>pointOnSegment(e.point,...part)))continue;
+      const lead=pinExit(e);
+      if(blocked(e.point,lead,e.placed)||onForeign(e.point,foreign))continue;
+      const branch=toTree(e.point,lead,direction(e.point,lead),tree);
+      if(branch)record(branch,serial++);
+     }
+    }
+    const missing=local.filter(e=>!tree.some(part=>pointOnSegment(e.point,...part)));
+    if(pendingSegments.size||missing.length)issues.push({
+     severity:'error',code:'LOCKED_ROUTE_DISCONNECTED',sheet_id:sheet,net_id:net.id,point:missing[0]?.point,
+     pins:missing.map(e=>e.terminal),obstacle:fixed[0].id,reason:'LOCKED_ROUTE_DISCONNECTED',message:`${net.id}: закреплённые провода не образуют связную цепь до всех выводов`
+    });
     continue;
    }
-   if(local.length===1)continue;
-   const foreign=occupied(sheetRoutes,net.id),obstacles=[...base,...otherPorts(net),...labelBoxes.map(bounds=>({bounds}))],blocked=collision(obstacles,foreign),guide=[...obstacles,...trackGuides(foreign)];
-   const root=local[0],remaining=local.slice(1).map(end=>({end,nearest:root,distance:dist(root.point,end.point)})),tree:Segment[]=[];
-   treeByNet.set(net.id,tree);
-   const exits=new Map(local.map(e=>[e,pinExit(e)]));
+   const groups=wireGroups(local,net);
    let serial=0;
+   for(const group of groups){
+   const root=group[0],remaining=group.slice(1).map(end=>({end,nearest:root,distance:dist(root.point,end.point)})),tree:Segment[]=[];
+   if(groups.length>1&&!pending.some(p=>p.net===net&&group.includes(p.end)))enqueue(net,root);
+   const exits=new Map(local.map(e=>[e,pinExit(e)]));
    while(remaining.length){
     let bi=0;
     for(let j=1;j<remaining.length;j++)if(remaining[j].distance<remaining[bi].distance)bi=j;
@@ -345,28 +396,21 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
     if(!blocked(b.point,from,b.placed)&&!onForeign(b.point,foreign)){
      const heading=direction(b.point,from);
      if(tree.length){
-      // Try projections as well as corners. The new branch terminates at the
-      // first actual contact; it may not cross and then re-enter its own tree.
-      const goals=new Map<string,Point>();
-      for(const [p,q] of tree){
-       const projection=p.x===q.x?{x:p.x,y:clamp(from.y,p.y,q.y)}:{x:clamp(from.x,p.x,q.x),y:p.y};
-       for(const goal of [projection,p,q])if(!onForeign(goal,foreign))goals.set(`${goal.x},${goal.y}`,goal);
-      }
-      let best=Infinity;
-      for(const goal of [...goals.values()].sort((p,q)=>dist(from,p)-dist(from,q)).slice(0,8)){
-       if(dist(from,goal)>best)break;
-       const middle=findPath(from,goal,guide,blocked,heading);
-       if(!middle)continue;
-       const candidate=stopAtTree(withoutLoops([b.point,...middle]),tree);
-       const score=segments(candidate).reduce((n,[p,q])=>n+dist(p,q),0)+BEND_COST*Math.max(0,candidate.length-2)+shortJog(candidate)+(candidate.length>2&&dist(candidate.at(-2)!,candidate.at(-1)!)<1.25?5:0);
-       if(score<best&&!onForeign(candidate.at(-1)!,foreign)){path=candidate;best=score;}
-      }
+      path=toTree(b.point,from,heading,tree);
      }else{
       const end=exits.get(a)!;
       if(!blocked(a.point,end,a.placed)&&!onForeign(a.point,foreign)){
        const middle=findPath(from,end,guide,blocked,heading,opposite(direction(a.point,end)));
        if(middle)path=withoutLoops([b.point,...middle,a.point]);
       }
+     }
+    }
+    if(path&&net.render==='auto'){
+     const travel=segments(path).reduce((total,[p,q])=>total+dist(p,q),0);
+     const excess=travel-dist(path[0],path.at(-1)!);
+     if(travel+8*Math.max(0,path.length-2)+excess*.4>28+density*2.8){
+      enqueue(net,a);enqueue(net,b);
+      continue;
      }
     }
     if(path){
@@ -382,17 +426,43 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
      issues.push({severity:'warning',code:'AUTO_LABEL_FALLBACK',message:`${net.name||net.id}: для непроходимой ветви использованы именованные метки`});
     }else{
      retry??=net;
-     issues.push({severity:'error',code:'UNROUTED',message:`${net.name||net.id}: не удалось провести ${a.terminal.instance_id}.${a.pin.number} — ${b.terminal.instance_id}.${b.pin.number} на листе ${s.sheets.findIndex(sh=>sh.id===sheet)+1}; задайте ручной маршрут или режим меток`});
+     const exitBlocked=blocked(b.point,from,b.placed)||onForeign(b.point,foreign);
+     const obstacle=obstacles.find(o=>o.owner&&o.owner!==b.placed&&segmentHits(b.point,from,o.bounds));
+     issues.push({severity:'error',code:'UNROUTED',sheet_id:sheet,net_id:net.id,point:b.point,pins:[a.terminal,b.terminal],
+      reason:exitBlocked?'PIN_EXIT':'CHANNEL',obstacle:obstacle?.owner?.key,
+      message:`${net.name||net.id}: ${exitBlocked?'заблокирован выход из вывода':'нет свободного канала'} между ${a.terminal.instance_id}.${a.pin.number} и ${b.terminal.instance_id}.${b.pin.number}`});
     }
+   }
    }
   }
 
   // Route wires before placing automatic labels. Label anchors and their leads
   // are tried in deterministic order; explicit user positions are untouched.
   function placeLabels(){
-  pending.sort((a,b)=>Number(manualLabels.has(labelKey(b.net.id,b.end.terminal,b.peer)))-Number(manualLabels.has(labelKey(a.net.id,a.end.terminal,a.peer))));
-
-  for(const {net,end:e,peer} of pending){
+  const sideSpace=({net,end:e,peer}:typeof pending[number])=>{
+   const d=pinDirection(e.placed,e.pin),p=pinExit(e),text=(net.name||net.id)+(peer!==undefined?` (л.${peer+1})`:'');
+   if(manualLabels.has(labelKey(net.id,e.terminal,peer)))return -100;
+   if(priorityPins.has(terminalKey(e.terminal)))return -10;
+   if(net.role==='ground')return 10;
+   let options=0;
+   for(const gap of [3,8,14,23,33])for(const left of [false,true]){
+    const q={x:p.x+d.x*gap,y:p.y+d.y*gap};
+    const box=labelBounds(text,q,left,.6);
+    if(inFrame(q)&&box.x>=20&&box.right<=415&&box.y>=5&&box.bottom<=292&&!base.some(o=>intersects(box,o.bounds)))options++;
+   }
+   return options;
+  };
+  const priorities=new Map(pending.map(job=>{
+   const d=pinDirection(job.end.placed,job.end.pin),text=job.net.name||job.net.id;
+   const width=labelBounds(text,{x:0,y:0},false).right;
+   return [job,{freedom:sideSpace(job),vertical:d.y!==0,width}];
+  }));
+  pending.sort((a,b)=>{
+   const p=priorities.get(a)!,q=priorities.get(b)!;
+   return p.freedom-q.freedom||Number(b.peer!==undefined)-Number(a.peer!==undefined)||
+    (p.vertical&&q.vertical?p.width-q.width:0);
+  });
+  function place({net,end:e,peer}:typeof pending[number]):Issue|undefined{
    const dir=pinDirection(e.placed,e.pin),ground=net.role==='ground';
    const text=ground?'':(net.name||net.id)+(peer!==undefined?` (л.${peer+1})`:'');
    const textBoxes={left:labelBounds(text,{x:0,y:0},true),right:labelBounds(text,{x:0,y:0},false)};
@@ -400,17 +470,18 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
    const manual=manualLabels.get(pinKey);
    const lead=pinExit(e),heading=direction(e.point,lead);
    const foreign=occupied(sheetRoutes,net.id),allSegments=sheetRoutes.flatMap(r=>segments(r.points));
-   const original=treeByNet.get(net.id)??[];
    // Separate ground stubs are already electrically named. Keep their ink
    // disjoint, so two earth symbols cannot grow onto the same drawn island.
-   const tree=ground?sheetRoutes.filter(r=>r.net_id===net.id).flatMap(r=>segments(r.points)):original;
-   if(ground&&!original.some(([a,b])=>pointOnSegment(e.point,a,b))&&tree.some(([a,b])=>pointOnSegment(e.point,a,b)))continue;
-   const attached=tree.some(([a,b])=>pointOnSegment(e.point,a,b));
-   if(peer===undefined&&attached&&namedTrees.has(net.id))continue;
-   const boxes=[...base,...otherPorts(net),...labelBoxes.map(bounds=>({bounds}))],conflicts=collision(boxes,foreign);
+   const allTree=sheetRoutes.filter(r=>r.net_id===net.id).flatMap(r=>segments(r.points));
+   const connected=new Set(allTree.filter(([a,b])=>pointOnSegment(e.point,a,b)));
+   for(const segment of connected)for(const other of allTree)if(!connected.has(other)&&hit(...segment,...other))connected.add(other);
+   const tree=connected.size?[...connected]:allTree;
+   const attached=connected.size>0;
+   if(peer===undefined&&!manual&&attached&&labels.some(l=>l.net_id===net.id&&tree.some(([a,b])=>pointOnSegment(l.point,a,b))))return;
+   const boxes:Box[]=[...base,...otherPorts(net),...labelBoxes.map(bounds=>({bounds}))],conflicts=collision(boxes,foreign);
    // A short branch to a nearby already-drawn ground is more legible
    // than parallel stubs each terminating in a separate earth symbol.
-   if(ground&&!manual&&!attached&&tree.length&&!conflicts(e.point,lead,e.placed)){
+   if(ground&&!manual&&!attached&&tree.length&&labels.some(l=>l.net_id===net.id)&&!conflicts(e.point,lead,e.placed)){
     const goals=tree.map(([a,b])=>a.x===b.x?{x:a.x,y:clamp(lead.y,a.y,b.y)}:{x:clamp(lead.x,a.x,b.x),y:a.y})
      .filter(g=>dist(lead,g)<=18&&!onForeign(g,foreign)).sort((a,b)=>dist(lead,a)-dist(lead,b));
     let branch:Point[]|undefined,best=Infinity;
@@ -421,29 +492,39 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
      const cost=segments(path).reduce((sum,[a,b])=>sum+dist(a,b),0)+4*(path.length-2);
      if(path.length>=2&&cost<best&&cost<=20){branch=path;best=cost;}
     }
-    if(branch){add({id:routeId('label',net,net.pins.findIndex(pin=>terminalKey(pin)===terminalKey(e.terminal))),net_id:net.id,sheet_id:sheet,points:branch});continue;}
+    if(branch){
+     const goal=branch.at(-1)!;
+     const island=new Set(tree.filter(([a,b])=>pointOnSegment(goal,a,b)));
+     for(const segment of island)for(const other of tree)if(!island.has(other)&&hit(...segment,...other))island.add(other);
+     if(labels.some(l=>l.net_id===net.id&&[...island].some(([a,b])=>pointOnSegment(l.point,a,b)))){
+      add({id:routeId('label',net,net.pins.findIndex(pin=>terminalKey(pin)===terminalKey(e.terminal))),net_id:net.id,sheet_id:sheet,points:branch});return;
+     }
+    }
    }
    const blocked:Blocked=(a,b,owner)=>conflicts(a,b,owner)||(!attached&&tree.some(([c,d])=>hit(a,b,c,d)!==undefined));
+   blocked.turn=conflicts.turn;
+   blocked.crossingCost=conflicts.crossingCost;
    type Approach=NonNullable<RenderedLabel['approach']>;
-   type Candidate={point:Point;tail:Point;approach:Approach;alignLeft:boolean;mark:Bounds;text:Bounds;dir:number};
+   type Candidate={point:Point;tail:Point;approach:Approach;alignLeft:boolean;textShift:number;mark:Bounds;text:Bounds;dir:number};
    const candidates:Candidate[]=[],seen=new Set<string>();
-   const blockedAreas=[...physical.values(),...labelBoxes,stamp];
+   const blockedAreas=[...base.map(o=>o.bounds),...portBoxes.map(o=>o.lead),...labelBoxes,stamp];
    function offer(p:Point,approach:Approach,alignLeft=approach==='left'){
     const point={x:round(p.x),y:round(p.y)},key=`${point.x},${point.y},${approach},${alignLeft}`;
     if(seen.has(key)||!inFrame(point))return;seen.add(key);
     const {x,y}=point,b=textBoxes[alignLeft?'left':'right'];
-    const text={x:x+b.x,right:x+b.right,y:y+b.y,bottom:y+b.bottom};
-    // Reserve the visible symbol and the editor's hit circle.
     const directionIndex=['right','down','left','up'].indexOf(approach),axis=dirs[directionIndex];
-    const mark=ground?{x:x-4,right:x+4,y:y-1.6,bottom:y+5.8}:{
-     x:x-1.6-Math.max(0,axis.x),right:x+1.6-Math.min(0,axis.x),
-     y:y-1.6-Math.max(0,axis.y),bottom:y+1.6-Math.min(0,axis.y)
-    };
-    if((ground?[mark]:[text,mark]).some(b=>b.x<20||b.right>415||b.y<5||b.bottom>292||
-     blockedAreas.some(o=>intersects(b,o,.25))||allSegments.some(([a,c])=>segmentHits(a,c,b))))return;
+    const mark=labelMarkBounds(point,approach,ground);
+    const unavailable=(box:Bounds)=>box.x<20||box.right>415||box.y<5||box.bottom>292||
+     blockedAreas.some(o=>intersects(box,o,.18))||allSegments.some(([a,c])=>segmentHits(a,c,box));
+    if(unavailable(mark))return;
     const tail={x:round(x-axis.x*LABEL_LEAD),y:round(y-axis.y*LABEL_LEAD)};
-    if(blocked(tail,point))return;
-    candidates.push({point,tail,approach,alignLeft,mark,text:ground?mark:text,dir:directionIndex});
+    if(blocked(tail,point,e.placed)||onForeign(point,foreign))return;
+    for(const textShift of ground?[0]:axis.y?[0,.65,1.25,-.65,5.5,8.5]:[0,.65,1.25,-.65]){
+     const text=ground?mark:{x:x+b.x,right:x+b.right,y:y+b.y+textShift,bottom:y+b.bottom+textShift};
+     if(!ground&&unavailable(text))continue;
+     candidates.push({point,tail,approach,alignLeft,textShift,mark,text,dir:directionIndex});
+     if(!textShift)break;
+    }
    }
    const headings:Approach[]=['right','down','left','up'];
    if(manual){
@@ -460,32 +541,34 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
     // Probe the straight escape first; then fan out along its tangent.
     // Also try a perpendicular arrow beyond a short pin stub, instead of
     // dragging a horizontal arrow around the case when its caption won't fit.
-    for(const n of [LABEL_LEAD,6,8.75,13.75,22.5,35,50]){
+    for(const n of [LABEL_LEAD,4,6,8.75,11,13.75,17.5,22.5,28,35,42,50,65]){
      for(const shift of [0,-5,5,-10,10,-17.5,17.5,-30,30]){
       const x=lead.x+dir.x*n-dir.y*shift,y=lead.y+dir.y*n+dir.x*shift;
       offer({x,y},headings[heading]);
-      if(dir.y)offer({x,y},headings[heading],true);
+      offer({x,y},headings[heading],dir.x>=0);
       for(const k of [(heading+1)%4,(heading+3)%4])offer({x:x+dirs[k].x*LABEL_LEAD,y:y+dirs[k].y*LABEL_LEAD},headings[k]);
      }
     }
     for(const n of [8.75,17.5,30,50])for(const shift of [-10,10,-22.5,22.5,0])
      offer({x:lead.x-dir.x*n-dir.y*shift,y:lead.y-dir.y*n+dir.x*shift},headings[opposite(heading)]);
    }
-   let choice:Candidate|undefined,points:Point[]=[],bestScore=Infinity;
+   let choice:Candidate|undefined,points:Point[]=[],bestScore=Infinity,searchBudget=false;
    if(!onForeign(e.point,foreign)&&!blocked(e.point,lead,e.placed)){
     const wrongSide=(c:Candidate)=>!ground&&(c.point.x-e.point.x)*dir.x+(c.point.y-e.point.y)*dir.y<0;
-    const sidePenalty=(c:Candidate)=>(wrongSide(c)?24:0)+(!ground&&c.dir!==heading?5:0);
+    const sidePenalty=(c:Candidate)=>(wrongSide(c)?24:0)+(!ground&&c.dir!==heading?5:0)+Math.abs(c.textShift)*.4;
+    const lateral=(c:Candidate)=>dir.y?Math.abs(c.point.x-e.point.x):Math.abs(c.point.y-e.point.y);
     const score=(c:Candidate)=>dist(lead,c.tail)+sidePenalty(c);
     candidates.sort((a,b)=>score(a)-score(b));
     function tryPath(c:Candidate,search:boolean){
      const avoidLabel:Blocked=(a,b)=>blocked(a,b)||segmentHits(a,b,c.text)||segmentHits(a,b,c.mark);
-     const middle=findPath(lead,c.tail,search?[...boxes,...trackGuides(foreign),{bounds:c.text},{bounds:c.mark}]:boxes,avoidLabel,heading,c.dir,search);
+     avoidLabel.turn=blocked.turn;
+     const middle=findPath(lead,c.tail,search?[...boxes,...trackGuides(foreign),{bounds:c.text},{bounds:c.mark}]:boxes,avoidLabel,heading,c.dir,search,()=>{searchBudget=true;});
      if(!middle)return;
      let path=withoutLoops([e.point,...middle,c.point]);
      if(attached)path=stopAtTree(path.slice().reverse(),tree).reverse();
      const a=path.at(-2),b=path.at(-1);
      if(!a||!b||!same(b,c.point)||direction(a,b)!==c.dir||dist(a,b)<LABEL_LEAD-.001)return;
-     const cost=segments(path).reduce((sum,[a,b])=>sum+dist(a,b),0)+8*Math.max(0,path.length-2)+shortJog(path)+sidePenalty(c);
+     const cost=segments(path).reduce((sum,[a,b])=>sum+dist(a,b),0)+9*Math.max(0,path.length-2)+shortJog(path)+sidePenalty(c)+.8*lateral(c);
      if(cost<bestScore){choice=c;points=path;bestScore=cost;}
     }
     let valid=0;
@@ -495,45 +578,93 @@ function routeOneSheet(s:Schematic,sections:PlacedSection[],sheet:string,endpoin
      if(previous!==bestScore)valid++;
      if(valid>=6)break;
     }
-    if(!choice)for(const c of candidates.slice(0,10)){tryPath(c,true);if(choice)break;}
+    if(!choice)for(const c of candidates.slice(0,12)){tryPath(c,true);if(choice)break;}
    }
    if(!choice){
-    issues.push({severity:'error',code:'LABEL_CROWDED',message:`${net.name||net.id}, ${e.terminal.instance_id}.${e.pin.number}: не удалось подключить обозначение; раздвиньте элементы`});
-    continue;
+    const blockage=boxes.find(box=>box.owner!==e.placed&&segmentHits(e.point,lead,box.bounds));
+    const reason=!inFrame(e.point)||!inFrame(lead)?'FRAME':blockage||blocked(e.point,lead,e.placed)||onForeign(e.point,foreign)?'PIN_EXIT':!candidates.length?'LABEL_FOOTPRINT':searchBudget?'SEARCH_BUDGET':'SEARCH';
+    const obstacle=blockage?.owner?.key??sheetRoutes.find(w=>w.net_id!==net.id&&segments(w.points).some(([a,b])=>hit(e.point,lead,a,b)))?.id;
+    return {severity:'error',code:'LABEL_CROWDED',sheet_id:sheet,net_id:net.id,point:e.point,pins:[e.terminal],reason,obstacle,
+     message:`${net.name||net.id}, ${e.terminal.instance_id}.${e.pin.number}: ${({FRAME:'выход за рамку',PIN_EXIT:'заблокирован выход из вывода',LABEL_FOOTPRINT:'нет места для обозначения',SEARCH_BUDGET:'исчерпан предел поиска подвода к обозначению',SEARCH:'не найден свободный подвод к обозначению'})[reason]}${obstacle?' ('+obstacle+')':''}`};
    }
-   if(attached)namedTrees.add(net.id);
-   labels.push({net_id:net.id,sheet_id:sheet,point:choice.point,text,role:net.role,pin:e.terminal,continuation:peer!==undefined,...(peer!==undefined?{peerSheet:s.sheets[peer].id}:{}),approach:choice.approach,alignLeft:choice.alignLeft});
+   labels.push({net_id:net.id,sheet_id:sheet,point:choice.point,text,role:net.role,pin:e.terminal,continuation:peer!==undefined,...(peer!==undefined?{peerSheet:s.sheets[peer].id,pairId:pairs.find(p=>p.net===net.id&&(p.from===sheet&&p.to===s.sheets[peer].id||p.to===sheet&&p.from===s.sheets[peer].id))!.id}:{}),approach:choice.approach,alignLeft:choice.alignLeft,...(choice.textShift?{textShift:choice.textShift}:{})});
    if(!ground)labelBoxes.push(choice.text);
    labelBoxes.push(choice.mark);
    if(points.length>1)add({id:routeId('label',net,net.pins.findIndex(pin=>terminalKey(pin)===terminalKey(e.terminal))+(peer!==undefined?(peer+1)*net.pins.length:0)),net_id:net.id,sheet_id:sheet,points});
   }
+  const checkpoint=()=>({routes:routes.length,ink:sheetRoutes.length,labels:labels.length,boxes:labelBoxes.length});
+  const recent:{job:typeof pending[number];before:ReturnType<typeof checkpoint>}[]=[];
+  for(const job of pending){
+   const before=checkpoint();
+   let selected=job,failure=place(job);
+   if(failure&&job.peer!==undefined&&!manualLabels.has(labelKey(job.net.id,job.end.terminal,job.peer))){
+    const local=plans.find(plan=>plan.net===job.net)?.local??[];
+    for(const end of local.filter(end=>end!==job.end).slice(0,4)){
+     const another={...job,end};
+     if(place(another))continue;
+     selected=another;failure=undefined;
+     // A relocated port still needs the original physical pin on its local net.
+     enqueue(job.net,job.end);
+     break;
+    }
+   }
+   if(!failure){recent.push({job:selected,before});if(recent.length>2)recent.shift();continue;}
+   const d=pinDirection(job.end.placed,job.end.pin);
+   const eligible=recent.findLastIndex(({job:prior})=>{
+    const other=pinDirection(prior.end.placed,prior.end.pin);
+    return prior.end.placed!==job.end.placed||other.x!==d.x||other.y!==d.y||
+     manualLabels.has(labelKey(prior.net.id,prior.end.terminal,prior.peer));
+   });
+   const displaced=recent.slice(eligible+1);
+   if(displaced.length&&!manualLabels.has(labelKey(job.net.id,job.end.terminal,job.peer))){
+    const start=displaced[0].before;
+    const savedRoutes=routes.splice(start.routes),savedInk=sheetRoutes.splice(start.ink);
+    const savedLabels=labels.splice(start.labels),savedBoxes=labelBoxes.splice(start.boxes);
+    let success=true;
+    const reordered=[job,...displaced.map(entry=>entry.job)],next:typeof recent=[];
+    for(const candidate of reordered){
+     const before=checkpoint();
+     if(place(candidate)){success=false;break;}
+     next.push({job:candidate,before});
+    }
+    if(success){recent.splice(0,recent.length,...next.slice(-2));continue;}
+    routes.splice(start.routes,routes.length-start.routes,...savedRoutes);
+    sheetRoutes.splice(start.ink,sheetRoutes.length-start.ink,...savedInk);
+    labels.splice(start.labels,labels.length-start.labels,...savedLabels);
+    labelBoxes.splice(start.boxes,labelBoxes.length-start.boxes,...savedBoxes);
+   }
+   issues.push(failure);
+  }
   pending.length=0;
   }
   placeLabels();
-  for(let i=0;i<sheetRoutes.length;i++)for(let j=i+1;j<sheetRoutes.length;j++){
-   const a=sheetRoutes[i],b=sheetRoutes[j];if(a.net_id===b.net_id)continue;
-   const as=segments(a.points),bs=segments(b.points);
-   const conflict=as.some(([p,q])=>bs.some(([u,v])=>overlap(p,q,u,v)))||
-    [a.points[0],a.points.at(-1)!].some(p=>bs.some(([u,v])=>pointOnSegment(p,u,v)))||
-    [b.points[0],b.points.at(-1)!].some(p=>as.some(([u,v])=>pointOnSegment(p,u,v)));
-   if(conflict)issues.push({severity:'warning',code:'AMBIGUOUS_CROSSING',message:`Лист ${sheet}: неоднозначное касание цепей ${a.net_id} и ${b.net_id}; электрически они не соединены`});
-   else if((a.locked||b.locked)&&as.some(([p,q])=>bs.some(([u,v])=>parallelTooClose(p,q,u,v))))issues.push({severity:'warning',code:'WIRE_SPACING',message:`Лист ${sheet}: между параллельными участками ${a.net_id} и ${b.net_id} меньше 3 мм`});
-  }
  return {routes,labels,issues,retry};
 }
 
 export function routeSheetBatch(s:Schematic,sections:PlacedSection[],sheetIds:readonly string[],memo?:SheetRouteMemo):RoutedSheets{
  const endpoints=terminalGraph(sections),netIds=new Map(s.nets.map((net,i)=>[net,i]));
  const reserved=new Set(s.layout.routes.filter(r=>r.locked).map(r=>r.id));
+ const pairs=continuationPairs(s,new Map([...endpoints].map(([key,e])=>[key,e.placed.sheet_id])));
  const batches=sheetIds.map(sheet=>{
   const calculate=()=>{
-   let best=routeOneSheet(s,sections,sheet,endpoints,netIds,reserved);
-   // One bounded rip-up attempt on small projects: give a blocked net first
-   // choice of corridors, keep the reroute only if it improves diagnostics.
-   if(best.issues.some(i=>i.severity==='error')||best.retry&&s.nets.length<=80&&s.components.length<=80){
-    const other=routeOneSheet(s,sections,sheet,endpoints,netIds,reserved,best.retry,true);
-    const rank=(r:RoutedSheets)=>r.issues.filter(i=>i.severity==='error').length*1e6+r.issues.length;
-    if(rank(other)<rank(best))best=other;
+   let best=routeOneSheet(s,sections,sheet,endpoints,netIds,reserved,pairs);
+   const localSections=sections.filter(section=>section.sheet_id===sheet);
+   const localSchematic={...s,sheets:s.sheets.filter(page=>page.id===sheet),nets:s.nets.map(net=>({
+    ...net,pins:net.pins.filter(pin=>endpoints.get(terminalKey(pin))?.placed.sheet_id===sheet)
+   }))};
+   const quality=(r:RoutedSheets)=>measureQuality({
+    schematic:localSchematic,sections:localSections,issues:r.issues,
+    routes:[...s.layout.routes.filter(route=>route.locked&&route.sheet_id===sheet),...r.routes],
+    labels:r.labels.map(label=>({...label,peerSheet:undefined,pairId:undefined,continuation:false}))
+   });
+   let bestQuality:ReturnType<typeof quality>|undefined;
+   for(const contactsFirst of [true,false]){
+    if(!best.issues.some(i=>i.severity==='error')&&!(contactsFirst&&best.retry&&s.nets.length<=80&&s.components.length<=80))break;
+    const failed=new Set(best.issues.flatMap(i=>i.pins?.map(terminalKey)??[]));
+    const other=routeOneSheet(s,sections,sheet,endpoints,netIds,reserved,pairs,best.retry,contactsFirst,failed);
+    const otherQuality=quality(other);
+    bestQuality??=quality(best);
+    if(betterQuality(otherQuality,bestQuality)){best=other;bestQuality=otherQuality;}
    }
    const {routes,labels,issues}=best;return {routes,labels,issues:issues.map(issue=>({...issue,path:issue.path??'sheets.'+sheet}))};
   };
@@ -545,7 +676,7 @@ export function routeSheetBatch(s:Schematic,sections:PlacedSection[],sheetIds:re
 export function mergeRoutedSheets(s:Schematic,batches:readonly RoutedSheets[]):RoutedSheets{
  const routes=[...s.layout.routes.filter(r=>r.locked).map(r=>structuredClone(r)),...batches.flatMap(b=>b.routes)];
  const issues=batches.flatMap(b=>b.issues);
- for(const r of routes)if(r.points.some(p=>p.x<20||p.x>415||p.y<5||p.y>292))issues.push({severity:'warning',code:'ROUTE_OUT_OF_BOUNDS',message:`Маршрут ${r.id} выходит за рамку А3`});
+ for(const r of routes)if(r.points.some(p=>p.x<20||p.x>415||p.y<5||p.y>292))issues.push({severity:'error',code:'ROUTE_OUT_OF_BOUNDS',message:`Маршрут ${r.id} выходит за рамку А3`});
  return {routes,labels:batches.flatMap(b=>b.labels),issues};
 }
 

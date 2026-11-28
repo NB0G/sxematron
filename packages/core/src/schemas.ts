@@ -7,7 +7,7 @@ const positive={type:'number',exclusiveMinimum:0,maximum:1000};
 const object=(properties:Record<string,unknown>,required:string[]=[])=>({type:'object',additionalProperties:false,properties,required});
 const arr=(items:unknown,maxItems=10000,minItems=0)=>({type:'array',items,maxItems,minItems});
 const point=object({x:num,y:num},['x','y']);
-const placement=object({sheet_id:id,position:point,locked:{type:'boolean'},rotation:{type:'number',enum:[0,90,180,270]},mirror:{type:'boolean'},relative:{type:'boolean'}});
+const placement=object({sheet_id:id,position:point,locked:{type:'boolean'},rotation:{type:'number',enum:[0,90,180,270]},autoRotation:{type:'boolean'},mirror:{type:'boolean'},relative:{type:'boolean'}});
 const terminal=object({instance_id:id,number:{type:'string',minLength:1,maxLength:20}},['instance_id','number']);
 const instance=object({id,component_code:id,variant_code:id,value:text,tag:text,designator:{type:'string',pattern:'^[A-ZА-Я]+[1-9][0-9]*$',maxLength:30},definition_fingerprint:text,sections:{type:'object',maxProperties:1000,propertyNames:id,additionalProperties:placement}},['id','component_code','variant_code','sections']);
 const net=object({id,name:text,render:{enum:['wire','label','auto']},role:{enum:['signal','positive_supply','negative_supply','ground']},pins:arr(terminal,10000,1)},['id','render','pins']);

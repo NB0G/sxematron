@@ -82,14 +82,16 @@ test('long identifiers generate short, distinct route IDs that survive JSON impo
  assert.deepEqual(again,built);
 });
 
-test('locked wire passing through a foreign component is warned about but not moved',async()=>{
+test('a manual wire through another component blocks export and stays in place',async()=>{
  const s=emptySchematic();s.components=[component('a',60,60),component('b',140,60),component('obstacle',100,60)];
  s.nets=[{id:'signal',render:'wire',pins:[{instance_id:'a',number:'2'},{instance_id:'b',number:'1'}]}];
  const full=await buildSchematic(s,library);
  const [a,b]=full.sections,p=(section:typeof a,num:string)=>pinPosition(section,section.section.pins.find(p=>p.number===num)!);
  const manual={id:'manual',net_id:'signal',sheet_id:'sheet_1',points:[p(a,'2'),p(b,'1')],locked:true};
  s.layout.routes=[manual];const r=await buildSchematic(s,library);
- assert.deepEqual(r.issues.map(i=>i.code),['LOCKED_ROUTE_OBSTACLE']);
+ assert.ok(r.issues.some(i=>i.code==='LOCKED_ROUTE_OBSTACLE'&&i.severity==='error'&&i.obstacle==='obstacle/BODY'));
+ assert.equal(r.issues.filter(i=>i.code==='FOREIGN_PIN_CONTACT').length,2);
+ assert.throws(()=>exportSheets(r),/Экспорт заблокирован/);
  assert.deepEqual(r.routes,[manual]);
 });
 
@@ -107,7 +109,7 @@ test('ground is approached from above even with a horizontal pin or a fixed labe
   const [a,b]=r.routes[0].points.slice(-2);
   assert.deepEqual(b,marker.point);
   assert.equal(a.x,b.x);
-  assert.ok(b.y-a.y>=3.75);
+  assert.ok(b.y-a.y>=2.4-.001);
   assert.match(renderSheet(r,'sheet_1'),new RegExp(`M ${b.x} ${b.y} v 1.25`));
  }
 });
@@ -126,7 +128,7 @@ test('arrows align with incoming wire segments, and same-net continuation marker
   const [a,b]=wire.points.slice(-2);
   assert.deepEqual(b,l.point);
   assert.ok(a.y===b.y||a.x===b.x);
-  assert.ok(length([a,b])>=3.75);
+  assert.ok(length([a,b])>=2.4-.001);
   assert.equal(l.approach,a.x===b.x?(b.y>a.y?'down':'up'):(b.x>a.x?'right':'left'));
   assert.ok(r.routes.filter(w=>w.sheet_id===l.sheet_id&&w!==wire).every(w=>w.points.slice(1).every((p,i)=>!pointOnSegment(l.point,w.points[i],p))));
  }

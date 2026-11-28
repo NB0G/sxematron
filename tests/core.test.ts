@@ -59,15 +59,22 @@ test('automatic overflow skips existing sheet IDs and does not append unusable s
  assert.equal(oversized.schematic.sheets.length,1);
 });
 
-test('locked anchors and valid manual routes survive reimport; disconnected moved route is rejected',async()=>{
+test('a manual route survives rebuild while an automatic branch reaches the moved terminal',async()=>{
  const s=wired();const route:WireRoute={id:'manual',net_id:'signal',sheet_id:'sheet_1',points:[{x:75,y:62.5},{x:135,y:62.5}],locked:true};s.layout.routes=[route];
  const result=await buildSchematic(s,lib);assert.deepEqual(errors(result),[]);assert.deepEqual(result.routes.find(r=>r.id==='manual'),route);assert.deepEqual(result.sections[0].position,{x:60,y:60});
- const changed=structuredClone(result.schematic);changed.components[1].sections.BODY.position={x:140,y:100};const broken=await buildSchematic(changed,lib);assert.ok(broken.issues.some(i=>i.code==='LOCKED_ROUTE_DISCONNECTED'&&i.severity==='error'));assert.throws(()=>exportSheets(broken));
+ const changed=structuredClone(result.schematic);changed.components[1].sections.BODY.position={x:140,y:100};const moved=await buildSchematic(changed,lib);
+ assert.deepEqual(errors(moved),[]);
+ assert.deepEqual(moved.routes.find(r=>r.id==='manual'),route);
+ assert.ok(moved.routes.some(r=>!r.locked));
+ assert.doesNotThrow(()=>exportSheets(moved));
 });
 
-test('locked route fragments must form one connected tree, not merely touch each terminal',async()=>{
+test('automatic wiring connects fixed fragments without changing their geometry',async()=>{
  const s=wired();s.layout.routes=[{id:'a',net_id:'signal',sheet_id:'sheet_1',points:[{x:75,y:62.5},{x:85,y:62.5}],locked:true},{id:'b',net_id:'signal',sheet_id:'sheet_1',points:[{x:125,y:62.5},{x:135,y:62.5}],locked:true}];
- const result=await buildSchematic(s,lib);assert.ok(result.issues.some(i=>i.code==='LOCKED_ROUTE_DISCONNECTED'&&i.severity==='error'),'disjoint fragments currently pass endpoint coverage but must not represent a connected wire net');
+ const result=await buildSchematic(s,lib);
+ assert.deepEqual(errors(result),[]);
+ assert.deepEqual(result.routes.filter(route=>route.locked),s.layout.routes);
+ assert.ok(result.routes.some(route=>!route.locked));
 });
 
 test('wire, label and automatic intersheet rendering preserve exactly the same terminal sets',async()=>{

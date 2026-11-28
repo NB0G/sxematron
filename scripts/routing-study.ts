@@ -13,7 +13,10 @@ if(budget){const n=Number(budget);if(!Number.isInteger(n)||n<1||n>8)throw Error(
 fs.mkdirSync(folder,{recursive:true});const name=path.basename(inputFile,'.json');
 const t=performance.now(),r:Resolved=await buildSchematic(input,lib),ms=Math.round(performance.now()-t);
 const codes:Record<string,number>={};for(const i of r.issues)codes[i.code]=(codes[i.code]??0)+1;
-const summary={name,ms,sections:r.sections.length,sheets:r.schematic.sheets.length,issues:codes,...measureQuality(r)};
+const quality=measureQuality(r);
+const expectedTerminals=r.schematic.nets.reduce((total,net)=>total+net.pins.length,0);
+const summary={name,ms,sections:r.sections.length,sheets:r.schematic.sheets.length,expectedTerminals,
+ coveredTerminals:expectedTerminals-quality.missingTerminals,issues:codes,...quality};
 fs.writeFileSync(path.join(folder,name+'.json'),JSON.stringify({ms,r}));
 fs.writeFileSync(path.join(folder,name+'.metrics.json'),JSON.stringify(summary,null,2)+'\n');
 for(const [i,sh] of r.schematic.sheets.entries())if(r.sections.some(s=>s.sheet_id===sh.id)){

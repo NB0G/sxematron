@@ -1,4 +1,5 @@
-import type {ComponentDefinition,Issue,Library,Schematic,Primitive,Section} from './types.js';
+import {transform} from './geometry.js';
+import type {ComponentDefinition,Issue,Library,Schematic,Primitive,Section,Point} from './types.js';
 import {validateComponentJson,validateSchematicJson} from './generated-validators.js';
 export {componentSchema,schematicSchema} from './schemas.js';
 type JsonValidator=((value:unknown)=>boolean)&{errors?:{instancePath:string;message?:string}[]|null};
@@ -28,21 +29,35 @@ export function expandRepeats(input:Schematic):{schematic:Schematic;issues:Issue
 export function isRotationLocked(def:ComponentDefinition,section:Section):boolean{
  if(def.rotationLocked)return true;
  if(def.physical_pins.length<3)return false;
- const sides=new Set(section.pins.map(pin=>pin.side));
- if(!sides.has('left')||!sides.has('right'))return false;
- function hasBody(p:Primitive):boolean{
-  if(p.kind==='rectangle')return true;
-  if(p.kind==='group')return (p.children??[]).some(hasBody);
-  const pts=p.points;
-  if(!pts||!['polygon','polyline'].includes(p.kind))return false;
-  const closed=pts[0]?.x===pts.at(-1)?.x&&pts[0]?.y===pts.at(-1)?.y;
-  if(p.kind==='polyline'&&!closed)return false;
-  const corners=closed?pts.slice(0,-1):pts;
-  return corners.length===4&&new Set(corners.map(p=>p.x)).size===2&&new Set(corners.map(p=>p.y)).size===2&&
-   corners.every((p,i)=>{const q=corners[(i+1)%4];return (p.x===q.x)!==(p.y===q.y);});
+ const left=section.pins.filter(pin=>pin.side==='left'),right=section.pins.filter(pin=>pin.side==='right');
+ if(!left.length||!right.length)return false;
+ function rectangles(primitives:Primitive[],world:(p:Point)=>Point):Point[][]{
+  return primitives.flatMap(p=>{
+   const x=p.x??0,y=p.y??0;
+   const display=(point:Point)=>world(transform(point,p.rotation,p.mirror));
+   if(p.kind==='group')return rectangles(p.children??[],point=>display({x:x+point.x,y:y+point.y}));
+   if(p.kind==='rectangle'){
+    const r=x+(p.width??0),b=y+(p.height??0);
+    return [[{x,y},{x:r,y},{x:r,y:b},{x,y:b}].map(display)];
+   }
+   if(!p.points||p.kind!=='polygon'&&p.kind!=='polyline')return [];
+   const pts=p.points,closed=pts[0]?.x===pts.at(-1)?.x&&pts[0]?.y===pts.at(-1)?.y;
+   if(p.kind==='polyline'&&!closed)return [];
+   return [(closed?pts.slice(0,-1):pts).map(display)];
+  });
  }
- return section.graphics.some(hasBody);
+ return rectangles(section.graphics,p=>p).some(corners=>{
+  const xs=[...new Set(corners.map(p=>p.x))].sort((a,b)=>a-b),ys=[...new Set(corners.map(p=>p.y))].sort((a,b)=>a-b);
+  if(corners.length!==4||xs.length!==2||ys.length!==2||
+   corners.some((p,i)=>{const q=corners[(i+1)%4];return (p.x===q.x)===(p.y===q.y);}))return false;
+  const meets=(pin:typeof left[number],edge:number,from:number)=>{
+   const tip=pin.x+from*(pin.length??5);
+   return Math.abs(tip-edge)<=1&&pin.y>=ys[0]-1&&pin.y<=ys[1]+1;
+  };
+  return left.every(pin=>meets(pin,xs[0],1))&&right.every(pin=>meets(pin,xs[1],-1));
+ });
 }
+
 export function validateSchematic(value:unknown,library:Library):Issue[]{
  const limits=inputLimits(value);if(limits.length)return limits;
  if(!sv(value))return(sv.errors??[]).map(e=>err('SCHEMA',`Схема ${e.instancePath||'/'}: ${e.message}`,e.instancePath));

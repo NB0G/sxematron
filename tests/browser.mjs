@@ -106,7 +106,7 @@ try{
  await check('invalid pin import is rejected without replacing current document',async()=>{await page.locator('input[type=file]').first().setInputFiles(path.join(root,'examples','invalid_pin.json'));await page.getByText(/нет физического вывода 999/).waitFor();assert.equal(await page.locator('[data-section-key]').count(),4);await openExample('demo.json');});
  await check('library component can be added manually to an existing scheme',async()=>{await page.getByRole('button',{name:'+ Компонент',exact:true}).click();await page.getByLabel('Библиотечное определение').click();await page.getByRole('option',{name:/Резистор/}).click();await page.getByLabel('Номинал / значение',{exact:true}).fill('47 кОм');await page.getByRole('button',{name:'Добавить',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.statusbar')?.textContent.includes('4 компонентов'));const json=await downloadJson();assert.equal(json.components.length,4);assert.ok(json.components.some(c=>c.value==='47 кОм'));});
  await check('manual electrical net editor uses physical pin numbers',async()=>{await page.waitForFunction(()=>!document.querySelector('.statusbar')?.textContent.includes('Перестраиваем'));await page.getByRole('button',{name:'+ Электрическая цепь',exact:true}).click();await page.getByLabel('Имя цепи / метки').fill('MANUAL');await page.getByLabel('Отображение',{exact:true}).click();await page.getByRole('option',{name:'Именованные метки'}).click();const dialog=page.getByRole('dialog');await dialog.locator('input[type=checkbox]:not(:disabled)').first().check();await page.getByRole('button',{name:'Применить',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.statusbar')?.textContent.includes('9 цепей'));const json=await downloadJson();assert.ok(json.nets.some(n=>n.name==='MANUAL'&&n.pins.length===1));});
- await check('constructor JSON import + graphical circle + library persistence',async()=>{await page.getByRole('button',{name:/Конструктор$/}).click();const def=JSON.parse(await fs.readFile(path.join(root,'examples/component_resistor.json'),'utf8'));def.component_code='BROWSER_TEST';def.name='Браузерный тестовый компонент';await page.locator('input[type=file]').last().setInputFiles({name:'browser-component.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(def))});await page.getByLabel('Постоянный код',{exact:true}).waitFor();await page.getByRole('button',{name:'Окружность',exact:true}).click();const canvas=page.locator('svg').filter({has:page.locator('#component-grid')});const box=await canvas.boundingBox();const x=box.x+(50+30)/140*box.width,y=box.y+(25+30)/100*box.height;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+8/140*box.width,y,{steps:5});await page.mouse.up();const waiting=page.waitForResponse(r=>r.url()===base+'/api/components'&&r.request().method()==='POST');await page.getByRole('button',{name:/Сохранить в библиотеку/}).click();assert.equal((await waiting).status(),201);const saved=await(await page.request.get(base+'/api/components/BROWSER_TEST')).json();assert.ok(saved.variants[0].sections[0].graphics.some(p=>p.kind==='circle'));assert.deepEqual(saved.physical_pins,[{number:'1'},{number:'2'}]);await capture('browser-constructor');});
+ await check('constructor JSON import + graphical circle + library persistence',async()=>{await page.getByRole('button',{name:/Конструктор$/}).click();const def=JSON.parse(await fs.readFile(path.join(root,'examples/component_resistor.json'),'utf8'));def.component_code='BROWSER_TEST';def.name='Браузерный тестовый компонент';await page.locator('input[type=file]').last().setInputFiles({name:'browser-component.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(def))});await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(input=>input.value==='BROWSER_TEST'));await page.getByRole('checkbox',{name:'Запретить поворот всех секций на схеме'}).check();await page.getByRole('button',{name:'Окружность',exact:true}).click();const canvas=page.locator('svg').filter({has:page.locator('#component-grid')});await canvas.scrollIntoViewIfNeeded();const [from,to]=await canvas.evaluate(el=>[new DOMPoint(40,25),new DOMPoint(48,25)].map(p=>{const {x,y}=p.matrixTransform(el.getScreenCTM());return{x,y};}));await page.mouse.move(from.x,from.y);await page.mouse.down();await page.mouse.move(to.x,to.y,{steps:5});await page.mouse.up();const waiting=page.waitForResponse(r=>r.url()===base+'/api/components'&&r.request().method()==='POST');await page.getByRole('button',{name:/Сохранить в библиотеку/}).click();assert.equal((await waiting).status(),201);const saved=await(await page.request.get(base+'/api/components/BROWSER_TEST')).json();assert.ok(saved.variants[0].sections[0].graphics.some(p=>p.kind==='circle'));assert.deepEqual(saved.physical_pins,[{number:'1'},{number:'2'}]);assert.equal(saved.rotationLocked,true);await capture('browser-constructor');});
  await check('library search/preview and generated current catalog',async()=>{await page.getByRole('button',{name:/Библиотека$/}).click();await page.getByPlaceholder('Название, код или категория').fill('BROWSER_TEST');await page.getByText('Браузерный тестовый компонент',{exact:true}).waitFor();await capture('browser-library');await page.getByRole('button',{name:/Документы$/}).click();await page.getByRole('button',{name:'COMPONENT_CATALOG.md',exact:true}).click();await page.locator('.doc-content').filter({hasText:'BROWSER_TEST'}).waitFor();await capture('browser-documentation');});
  await check('theme toggle and mobile viewing without page overflow',async()=>{await page.getByRole('button',{name:/Тёмная$/}).click();assert.equal(await page.evaluate(()=>localStorage.getItem('theme')),'dark');await page.setViewportSize({width:390,height:844});await page.waitForTimeout(100);const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);assert.equal(overflow,false);});
  await check('importing example 00 uses server SVG and reports no warnings',async()=>{
@@ -127,6 +127,51 @@ try{
   assert.ok(await page.locator('.sheet-svg path').evaluateAll((paths,stem)=>paths.some(p=>p.getAttribute('d')?.startsWith(stem)),`M ${ground.point.x} ${ground.point.y} v 1.25`));
   await page.setViewportSize({width:1600,height:1000});
   await capture('browser-ground-clearance');
+ });
+ await check('routing settings persist and diagnostic coordinates still allow a JSON download',async()=>{
+  const points=[['left',75,'2'],['right',155,'1']];
+  const schematic={format_version:'1.0',document:{title:'Параметры трассировки',designation:'CONTROLS'},sheets:[{id:'sheet_1'}],groups:[],
+   components:points.map(([id,x])=>({id,component_code:'GEN_R',variant_code:'01',sections:{BODY:{sheet_id:'sheet_1',position:{x,y:75},locked:true}}})),
+   nets:[{id:'test_control',name:'TEST',render:'auto',pins:points.map(([instance_id,,number])=>({instance_id,number}))}],
+   layout:{mode:'mixed',unit:'mm',settings:{wireDensity:100,iterations:1,bodyClearance:.5},routes:[]}};
+  const importJson=async document=>{
+   const response=page.waitForResponse(r=>r.url().endsWith('/api/schematics/build')&&r.request().method()==='POST');
+   await page.locator('input[type=file]').first().setInputFiles({name:'settings.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(document))});
+   return (await response).json();
+  };
+  const before=await importJson(schematic);
+  assert.equal(before.labels.length,0);
+  await page.getByRole('button',{name:'Настройки построения'}).click();
+  await page.getByLabel('Максимум проходов').click();
+  await page.getByRole('option',{name:'8',exact:true}).click();
+  await page.getByLabel('Зазор между проводом и корпусом, мм').fill('5');
+  await page.getByRole('slider',{name:'Плотность проводов'}).focus();
+  await page.keyboard.press('Home');
+  const response=page.waitForResponse(r=>r.url().endsWith('/api/schematics/build')&&r.request().method()==='POST');
+  await page.getByRole('button',{name:'Применить и перестроить'}).click();
+  const after=await (await response).json();
+  assert.equal(after.labels.length,2);
+  assert.notDeepEqual(after.routes,before.routes);
+  await page.getByRole('button',{name:'Настройки построения'}).waitFor();
+  const saved=await downloadJson();
+  assert.deepEqual(saved.layout.settings,{wireDensity:0,iterations:8,bodyClearance:5});
+  assert.deepEqual(saved.components.map(c=>c.sections.BODY),schematic.components.map(c=>c.sections.BODY));
+  const restored=await importJson(saved);
+  assert.deepEqual(restored.schematic.layout.settings,saved.layout.settings);
+  assert.deepEqual(restored.routes,after.routes);
+  const broken=structuredClone(schematic);
+  broken.sheets.push({id:'peer'});
+  broken.components[1].sections.BODY.sheet_id='peer';
+  broken.nets[0].render='label';
+  broken.layout.labels=[{net_id:'test_control',instance_id:'right',number:'1',peerSheet:'sheet_1',position:{x:10,y:4},locked:true}];
+  await importJson(broken);
+  const failure=page.locator('.issue').filter({hasText:'LABEL_CROWDED'});
+  await failure.getByRole('button',{name:'Лист 2'}).click();
+  await page.locator('[data-section-key="right/BODY"]').waitFor();
+  assert.match(await failure.textContent(),/X 150\.00, Y 77\.50 мм/);
+  assert.equal(await page.getByRole('button',{name:'↓ ZIP листов'}).isDisabled(),true);
+  const diagnostic=await downloadJson();
+  assert.deepEqual(diagnostic.layout.labels,broken.layout.labels);
  });
  await check('offline runtime makes no external requests and has no JavaScript/CSP errors',async()=>{assert.deepEqual(report.externalRequests,[]);assert.deepEqual(report.pageErrors,[]);assert.deepEqual(report.consoleErrors,[]);});
  report.status='passed';
