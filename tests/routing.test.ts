@@ -112,7 +112,7 @@ test('ground is approached from above even with a horizontal pin or a fixed labe
  }
 });
 
-test('arrows connect horizontally, and same-net continuation markers avoid existing wires',async()=>{
+test('arrows align with incoming wire segments, and same-net continuation markers avoid existing wires',async()=>{
  const s=emptySchematic();
  s.sheets.push({id:'second'});
  s.components=[component('a',60,60),component('b',145,60),component('c',75,105,90)];
@@ -125,9 +125,9 @@ test('arrows connect horizontally, and same-net continuation markers avoid exist
   const wire=r.routes.find(w=>w.sheet_id===l.sheet_id&&w.id.startsWith('label_'))!;
   const [a,b]=wire.points.slice(-2);
   assert.deepEqual(b,l.point);
-  assert.equal(a.y,b.y);
-  assert.ok(Math.abs(b.x-a.x)>=3.75);
-  assert.equal(l.approach,b.x>a.x?'right':'left');
+  assert.ok(a.y===b.y||a.x===b.x);
+  assert.ok(length([a,b])>=3.75);
+  assert.equal(l.approach,a.x===b.x?(b.y>a.y?'down':'up'):(b.x>a.x?'right':'left'));
   assert.ok(r.routes.filter(w=>w.sheet_id===l.sheet_id&&w!==wire).every(w=>w.points.slice(1).every((p,i)=>!pointOnSegment(l.point,w.points[i],p))));
  }
  assert.match(renderSheet(r,'second',{interactive:true}),/<g transform="rotate\(-90\)"><text[^>]+>1<\/text><\/g>/);

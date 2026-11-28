@@ -42,13 +42,14 @@ export function renderSheet(res:Resolved,sheetId:string,options:{interactive?:bo
   const {x,y}=label.point;
   const extra=inter?`data-label-net="${attr(label.net_id)}" data-instance-id="${attr(label.pin?.instance_id)}" data-pin-number="${attr(label.pin?.number)}"`:'';
   if(label.role==='ground'){
-   s+=`<path d="M ${n(x)} ${n(y)} v 1.25 M ${n(x-3.5)} ${n(y+1.25)} h 7 M ${n(x-2.5)} ${n(y+2.5)} h 5 M ${n(x-1.5)} ${n(y+3.75)} h 3"/>`;
+   s+=`<path ${extra} d="M ${n(x)} ${n(y)} v 1.25 M ${n(x-3.5)} ${n(y+1.25)} h 7 M ${n(x-2.5)} ${n(y+2.5)} h 5 M ${n(x-1.5)} ${n(y+3.75)} h 3"/>`;
   }else{
-   const back=x+(label.approach==='left'?2:-2);
-   s+=`<path d="M ${n(back)} ${n(y-1.25)} L ${n(x)} ${n(y)} L ${n(back)} ${n(y+1.25)}"/>`;
+   const [dx,dy]=label.approach==='up'?[0,-1]:label.approach==='down'?[0,1]:label.approach==='left'?[-1,0]:[1,0];
+   const bx=x-dx*2,by=y-dy*2;
+   s+=`<path ${extra} d="M ${n(bx+dy*1.25)} ${n(by-dx*1.25)} L ${n(x)} ${n(y)} L ${n(bx-dy*1.25)} ${n(by+dx*1.25)}"/>`;
   }
   const left=label.alignLeft??false;
-  s+=text(x+(left?-1:1),y-1.5,label.text,3.5,left?'end':'start',extra);
+  if(label.text)s+=text(x+(left?-1:1),y-1.5,label.text,3.5,left?'end':'start',extra);
  }
  if(inter)s+='</g>';s+='</svg>';return options.outlineFont?outlineSvgText(s,options.outlineFont):s;
 }

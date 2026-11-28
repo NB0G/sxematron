@@ -39,12 +39,12 @@ export function placementGroups(sections:PlacedSection[],nets:Net[]):PlacedSecti
  return [...groups.values()];
 }
 
-function canTurn(a:PlacedSection,passives:ReadonlySet<string>){
- if(a.placement.rotation!==undefined||!passives.has(a.instance.component_code)||a.section.pins.length!==2)return false;
+function canTurn(a:PlacedSection,turnable:ReadonlySet<string>){
+ if(a.placement.rotation!==undefined||!turnable.has(a.key)||a.section.pins.length!==2)return false;
  const [p,q]=a.section.pins;return (p.side==='left'&&q.side==='right')||(q.side==='left'&&p.side==='right')||(p.side==='top'&&q.side==='bottom')||(p.side==='bottom'&&q.side==='top');
 }
-function rotation(a:PlacedSection,vertical:boolean,byPin:Map<string,Net>,passives:ReadonlySet<string>,allowRotate:boolean){
- if(!allowRotate||!canTurn(a,passives))return a.rotation;
+function rotation(a:PlacedSection,vertical:boolean,byPin:Map<string,Net>,turnable:ReadonlySet<string>,allowRotate:boolean){
+ if(!allowRotate||!canTurn(a,turnable))return a.rotation;
  const [p,q]=a.section.pins;
  const n=byPin.get(terminal(a.instance.id,p.number)),m=byPin.get(terminal(a.instance.id,q.number));
  const anchor=n&&m&&rail(n)&&rail(m)&&n.role!==m.role
@@ -59,7 +59,7 @@ function rotation(a:PlacedSection,vertical:boolean,byPin:Map<string,Net>,passive
 
 function bounds(a:PlacedSection,r:number){return sectionBounds(a.section,r,a.mirror,{...a.instance,label_padding:a.label_padding});}
 
-export async function chooseAutoShape(list:PlacedSection[],edges:AutoEdge[],byPin:Map<string,Net>,passives:ReadonlySet<string>,elk:()=>Promise<LayoutElk>,hardGroup:boolean):Promise<{shape:AutoShape;elkFailed:boolean}>{
+export async function chooseAutoShape(list:PlacedSection[],edges:AutoEdge[],byPin:Map<string,Net>,turnable:ReadonlySet<string>,elk:()=>Promise<LayoutElk>,hardGroup:boolean):Promise<{shape:AutoShape;elkFailed:boolean}>{
  const index=new Map(list.map((a,i)=>[a,i]));
  let best:AutoShape|undefined, bestCost=Infinity, elkFailed=false;
  const gap=7;
@@ -82,7 +82,7 @@ export async function chooseAutoShape(list:PlacedSection[],edges:AutoEdge[],byPi
   if(cost<bestCost){best={rotations,offsets};bestCost=cost;}
  }
  for(const vertical of (list.length===1||hardGroup?[false]:[false,true])){
-  const rotations=list.map(a=>rotation(a,vertical,byPin,passives,!hardGroup));
+  const rotations=list.map(a=>rotation(a,vertical,byPin,turnable,!hardGroup));
   const boxes=list.map((a,i)=>bounds(a,rotations[i]));
   if(list.length===1){candidate(rotations,boxes,[{x:0,y:0}]);continue;}
   const sizes=boxes.map(b=>({w:b.right-b.x,h:b.bottom-b.y}));
@@ -106,9 +106,9 @@ export async function chooseAutoShape(list:PlacedSection[],edges:AutoEdge[],byPi
   }catch{elkFailed=true;}
   if(hardGroup&&!best)candidate(rotations,boxes,list.map((_,i)=>({x:(i%6)*60,y:Math.floor(i/6)*55})));
  }
- // A long series chain can fold into rows. Vertical passives at the
+ // A long series chain can fold into rows. Vertical turnable at the
  // turns connect two parallel rows without a broad return wire.
- if(!hardGroup&&list.length>=6&&list.length<=40&&edges.length===list.length-1&&list.every(a=>canTurn(a,passives)&&!a.section.pins.some(p=>{const n=byPin.get(terminal(a.instance.id,p.number));return n&&rail(n);}))){
+ if(!hardGroup&&list.length>=6&&list.length<=40&&edges.length===list.length-1&&list.every(a=>canTurn(a,turnable)&&!a.section.pins.some(p=>{const n=byPin.get(terminal(a.instance.id,p.number));return n&&rail(n);}))){
   const adj=new Map(list.map(a=>[a,[] as {peer:PlacedSection;pin:Pin}[]]));
   for(const e of edges){adj.get(e.from)!.push({peer:e.to,pin:e.pinFrom});adj.get(e.to)!.push({peer:e.from,pin:e.pinTo});}
   const start=list.find(a=>adj.get(a)!.length===1);

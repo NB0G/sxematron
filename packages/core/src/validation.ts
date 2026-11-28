@@ -1,4 +1,4 @@
-import type {ComponentDefinition,Issue,Library,Schematic,Primitive} from './types.js';
+import type {ComponentDefinition,Issue,Library,Schematic,Primitive,Section} from './types.js';
 import {validateComponentJson,validateSchematicJson} from './generated-validators.js';
 export {componentSchema,schematicSchema} from './schemas.js';
 type JsonValidator=((value:unknown)=>boolean)&{errors?:{instancePath:string;message?:string}[]|null};
@@ -23,6 +23,26 @@ export function expandRepeats(input:Schematic):{schematic:Schematic;issues:Issue
  for(const [port,target]of Object.entries(repeat.connections??{})){const pins=t.ports[port],dest=s.nets.find(n=>n.id===target);if(!pins||!dest){issues.push(err('PORT',`Повтор ${repeat.id}: порт ${port} или общая цепь ${target} не существует`));continue;}for(const p of pins){const term={...p,instance_id:prefix+p.instance_id};const local=s.nets.find(n=>n.id.startsWith(prefix)&&n.pins.some(a=>a.instance_id===term.instance_id&&a.number===term.number));if(local){for(const a of local.pins)if(!dest.pins.some(b=>b.instance_id===a.instance_id&&b.number===a.number))dest.pins.push(a);s.nets=s.nets.filter(n=>n!==local);}else if(!dest.pins.some(a=>a.instance_id===term.instance_id&&a.number===term.number))dest.pins.push(term);}}
  }}delete s.templates;delete s.repeat_instances;return {schematic:s,issues};
 }
+/** A two-terminal resistor may turn. A rectangular multi-pin block with pins on
+ * both side rails must remain readable in its library orientation. */
+export function isRotationLocked(def:ComponentDefinition,section:Section):boolean{
+ if(def.rotationLocked)return true;
+ if(def.physical_pins.length<3)return false;
+ const sides=new Set(section.pins.map(pin=>pin.side));
+ if(!sides.has('left')||!sides.has('right'))return false;
+ function hasBody(p:Primitive):boolean{
+  if(p.kind==='rectangle')return true;
+  if(p.kind==='group')return (p.children??[]).some(hasBody);
+  const pts=p.points;
+  if(!pts||!['polygon','polyline'].includes(p.kind))return false;
+  const closed=pts[0]?.x===pts.at(-1)?.x&&pts[0]?.y===pts.at(-1)?.y;
+  if(p.kind==='polyline'&&!closed)return false;
+  const corners=closed?pts.slice(0,-1):pts;
+  return corners.length===4&&new Set(corners.map(p=>p.x)).size===2&&new Set(corners.map(p=>p.y)).size===2&&
+   corners.every((p,i)=>{const q=corners[(i+1)%4];return (p.x===q.x)!==(p.y===q.y);});
+ }
+ return section.graphics.some(hasBody);
+}
 export function validateSchematic(value:unknown,library:Library):Issue[]{
  const limits=inputLimits(value);if(limits.length)return limits;
  if(!sv(value))return(sv.errors??[]).map(e=>err('SCHEMA',`Схема ${e.instancePath||'/'}: ${e.message}`,e.instancePath));
@@ -31,8 +51,10 @@ export function validateSchematic(value:unknown,library:Library):Issue[]{
  duplicates((value as Schematic).templates?.map(t=>t.id)??[],'шаблона','templates',issues);duplicates((value as Schematic).repeat_instances?.map(r=>r.id)??[],'повтора','repeat_instances',issues);
  const sheets=new Set(s.sheets.map(a=>a.id));for(const g of s.groups)if(g.sheet_id&&!sheets.has(g.sheet_id))issues.push(err('SHEET',`Группа ${g.id}: нет листа ${g.sheet_id}`));
  const defs=new Map(library.map(d=>[d.component_code,d]));const byId=new Map(s.components.map(c=>[c.id,c]));const used=new Map<string,string>();const des=new Set<string>();
- for(const c of s.components){const def=defs.get(c.component_code);if(!def){issues.push(err('COMPONENT',`${c.id}: нет компонента ${c.component_code}`));continue;}const v=def.variants.find(v=>v.variant_code===c.variant_code);if(!v){issues.push(err('VARIANT',`${c.id}: нет подкода ${c.variant_code}`));continue;}for(const [sid,p]of Object.entries(c.sections)){if(!v.sections.some(a=>a.section_id===sid))issues.push(err('SECTION',`${c.id}: нет секции ${sid}`));if(p.sheet_id&&!sheets.has(p.sheet_id))issues.push(err('SHEET',`${c.id}/${sid}: нет листа ${p.sheet_id}`));if(p.relative&&!s.groups.some(g=>g.tag===c.tag&&g.position))issues.push(err('GROUP',`${c.id}: относительные координаты требуют группу с позицией`));}if(c.designator){if(des.has(c.designator))issues.push(err('DESIGNATOR',`Повтор обозначения ${c.designator}`));des.add(c.designator);}}
+ for(const c of s.components){const def=defs.get(c.component_code);if(!def){issues.push(err('COMPONENT',`${c.id}: нет компонента ${c.component_code}`));continue;}const v=def.variants.find(v=>v.variant_code===c.variant_code);if(!v){issues.push(err('VARIANT',`${c.id}: нет подкода ${c.variant_code}`));continue;}for(const [sid,p]of Object.entries(c.sections)){const sec=v.sections.find(a=>a.section_id===sid);if(sec&&p.rotation&&isRotationLocked(def,sec))issues.push(err('ROTATION_LOCKED',`${c.id}/${sid}: это УГО можно размещать только с поворотом 0°`));if(!sec)issues.push(err('SECTION',`${c.id}: нет секции ${sid}`));if(p.sheet_id&&!sheets.has(p.sheet_id))issues.push(err('SHEET',`${c.id}/${sid}: нет листа ${p.sheet_id}`));if(p.relative&&!s.groups.some(g=>g.tag===c.tag&&g.position))issues.push(err('GROUP',`${c.id}: относительные координаты требуют группу с позицией`));}if(c.designator){if(des.has(c.designator))issues.push(err('DESIGNATOR',`Повтор обозначения ${c.designator}`));des.add(c.designator);}}
+ const ground=s.nets.filter(n=>n.role==='ground');
+ if(ground.length>1)issues.push(err('MULTIPLE_GROUNDS',`Символ земли разрешён только одной цепи; он назначен: ${ground.map(n=>n.name||n.id).join(', ')}. Разные земли не объединены.`,'nets'));
  for(const n of s.nets){const local=new Set<string>();for(const p of n.pins){const c=byId.get(p.instance_id);if(!c){issues.push(err('TERMINAL',`${n.id}: нет экземпляра ${p.instance_id}`));continue;}const d=defs.get(c.component_code);if(d&&!d.physical_pins.some(x=>x.number===p.number))issues.push(err('PIN',`${n.id}: у ${c.id} нет физического вывода ${p.number}`));const key=`${p.instance_id}\0${p.number}`;if(local.has(key))issues.push(err('DUPLICATE',`${n.id}: вывод ${c.id}.${p.number} указан дважды`));local.add(key);if(used.has(key)&&used.get(key)!==n.id)issues.push(err('NET_CONFLICT',`Вывод ${c.id}.${p.number} принадлежит цепям ${used.get(key)} и ${n.id}`));used.set(key,n.id);}}
  for(const r of s.layout.routes){if(!s.nets.some(n=>n.id===r.net_id))issues.push(err('ROUTE',`Маршрут ${r.id}: нет цепи ${r.net_id}`));if(!sheets.has(r.sheet_id))issues.push(err('SHEET',`Маршрут ${r.id}: нет листа ${r.sheet_id}`));for(let i=1;i<r.points.length;i++)if(r.points[i].x!==r.points[i-1].x&&r.points[i].y!==r.points[i-1].y)issues.push(err('ROUTE',`Маршрут ${r.id}: сегмент ${i} не ортогональный`));}
- for(const l of s.layout.labels??[]){if(!s.nets.some(n=>n.id===l.net_id&&n.pins.some(p=>p.instance_id===l.instance_id&&p.number===l.number)))issues.push(err('LABEL',`Метка ${l.net_id}: нет соответствующего вывода в цепи`));}return issues;
+ for(const l of s.layout.labels??[]){if(l.peerSheet&&!sheets.has(l.peerSheet))issues.push(err('SHEET',`Метка ${l.net_id}: нет листа назначения ${l.peerSheet}`));if(!s.nets.some(n=>n.id===l.net_id&&n.pins.some(p=>p.instance_id===l.instance_id&&p.number===l.number)))issues.push(err('LABEL',`Метка ${l.net_id}: нет соответствующего вывода в цепи`));}return issues;
 }

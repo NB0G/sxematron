@@ -1,3 +1,4 @@
+import {isRotationLocked} from '../../../packages/core/src/validation.js';
 import type { ComponentDefinition } from '../../../packages/core/src/types.js';
 const cell = (s: string) => s.replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/`/g, '\\`');
 export function componentCatalog(components: ComponentDefinition[]): string {
@@ -15,8 +16,8 @@ export function componentCatalog(components: ComponentDefinition[]): string {
       c.description ? cell(c.description) : '', '',
       `Физические выводы: ${c.physical_pins.map(p => cell(p.number)).join(', ')}.`, '');
     for (const v of c.variants) {
-      lines.push(`### Вариант ${cell(v.variant_code)} — ${cell(v.name)}`, '', '| Секция | Физические номера выводов |', '| --- | --- |');
-      for (const s of v.sections) lines.push(`| ${cell(s.section_id)} | ${s.pins.map(p => cell(p.number)).join(', ')} |`);
+      lines.push(`### Вариант ${cell(v.variant_code)} — ${cell(v.name)}`, '', '| Секция | Физические номера выводов | Повороты на схеме |', '| --- | --- | --- |');
+      for (const s of v.sections) lines.push(`| ${cell(s.section_id)} | ${s.pins.map(p => cell(p.number)).join(', ')} | ${isRotationLocked(c,s)?'Только 0°':'0°, 90°, 180°, 270°'} |`);
       lines.push('', 'Ссылка экземпляра:', '', '```json', JSON.stringify({id:'example_1',component_code:c.component_code,variant_code:v.variant_code,sections:Object.fromEntries(v.sections.map(s=>[s.section_id,{}]))}, null, 2), '```', '');
     }
   }

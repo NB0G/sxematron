@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {routingSettings} from '../../../packages/core/src/types.js';
 import type {PlacedSection,Schematic} from '../../../packages/core/src/types.js';
 import type {RoutedSheets,SheetRouteMemo} from '../../../packages/core/src/routing.js';
 
@@ -36,7 +37,8 @@ export class SheetRoutingCache {
    const page=Number(m[1]),list=reservations.get(page);
    if(list)list.push(r.id);else reservations.set(page,[r.id]);
   }
-  const common=JSON.stringify([s.sheets.map(sh=>sh.id),s.nets.length,s.components.length]);
+  const {bodyClearance,wireDensity}=routingSettings(s.layout);
+  const common=JSON.stringify([s.sheets.map(sh=>sh.id),s.nets.length,s.components.length,bodyClearance,wireDensity]);
   return (sheet,calculate)=>{
    const own=local.get(sheet);
    if(!own?.length&&!locked.some(r=>r.sheet_id===sheet))return calculate();

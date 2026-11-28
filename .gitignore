@@ -11,3 +11,6 @@
 /test-results/
 /playwright-report/
 /фотографии для объяснения/
+
+# macOS Finder metadata
+.DS_Store

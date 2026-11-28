@@ -1,9 +1,10 @@
 import type {ComponentDefinition,Instance,Library,PlacedSection,Resolved,Schematic,Issue,Placement} from './types.js';
-import {expandRepeats,validateSchematic} from './validation.js';
+import {expandRepeats,isRotationLocked,validateSchematic} from './validation.js';
 import {PAGE,placedBounds,sectionBounds,intersects,round,pinPosition} from './geometry.js';
 import {standardBuiltInSymbol} from './gost-symbols.js';
 import {MAX_SCHEMATIC_SHEETS} from './schemas.js';
 import {chooseAutoShape,compactOrigins,pinNets,placementGroups,type AutoEdge,type LayoutElk} from './auto-placement.js';
+import {finishDrawing,refineDrawing} from './optimization.js';
 import {labelBounds,routeSchematic,type RoutedSheets} from './routing.js';
 export type LayoutOptions={reset?:boolean;reflow?:boolean};
 async function createElk():Promise<LayoutElk>{
@@ -24,16 +25,41 @@ export async function buildSchematic(input:Schematic,lib:Library,options:LayoutO
  const reflowAnchors=new Set<Placement>();
  if(options.reflow&&!options.reset){
   const lockedNets=new Set(s.layout.routes.filter(r=>r.locked).map(r=>r.net_id));
-  const anchored=new Set(s.nets.filter(n=>lockedNets.has(n.id)).flatMap(n=>n.pins.map(p=>p.instance_id)));
+  const anchored=new Set([...s.nets.filter(n=>lockedNets.has(n.id)).flatMap(n=>n.pins.map(p=>p.instance_id)),...(s.layout.labels??[]).map(l=>l.instance_id)]);
   const fixedGroups=new Set(s.groups.filter(g=>g.locked&&g.position).map(g=>g.tag));
   for(const c of s.components)for(const p of Object.values(c.sections)){
    if(anchored.has(c.id)||c.tag&&fixedGroups.has(c.tag)){if(p.position)reflowAnchors.add(p);}
    else if(!p.locked)delete p.position;
   }
  }
- const byPin=pinNets(s.nets),passives=new Set(lib.filter(c=>/^[RРCС]$/.test(c.positional_prefix)).map(c=>c.component_code));
+ const byPin=pinNets(s.nets);
+ // Size the reserved side corridor using the very font used for output.
+ // A net crossing sheets needs just one peer address, not every page number.
+ const groupSheets=new Map(s.groups.map(g=>[g.tag,g.sheet_id]));
+ const where=new Map<string,string>();
+ for(const c of s.components){
+  const variant=lib.find(d=>d.component_code===c.component_code)?.variants.find(v=>v.variant_code===c.variant_code);
+  for(const sec of variant?.sections??[]){const sh=c.sections[sec.section_id]?.sheet_id??groupSheets.get(c.tag??'');if(sh)for(const p of sec.pins)where.set(c.id+'\0'+p.number,sh);}
+ }
+ const pageCount=new Map(s.nets.map(n=>[n,new Set(n.pins.map(p=>where.get(p.instance_id+'\0'+p.number)).filter(Boolean)).size]));
+ const widths=new Map<string,number>();
+ function labelExtent(net:Schematic['nets'][number]){
+  if(net.role==='ground')return 8;
+  const inter=(pageCount.get(net)??0)>1;
+  if(!inter&&net.render==='auto'&&net.pins.length>1&&net.pins.length<=8)return 8;
+  const text=(net.name||net.id)+(inter?' (л.'+s.sheets.length+')':'');
+  let width=widths.get(text);if(width===undefined){const b=labelBounds(text,{x:0,y:0},false);width=Math.min(82,b.right+7);widths.set(text,width);}
+  return width;
+ }
  const sections:PlacedSection[]=[];
- for(const c of s.components){const d=lib.find(d=>d.component_code===c.component_code)!;const f=fingerprint(d);if(c.definition_fingerprint&&c.definition_fingerprint!==f)issues.push({severity:'warning',code:'DEFINITION_CHANGED',message:`${c.designator}: библиотечное определение изменено; используется текущее`});c.definition_fingerprint=f;const v=d.variants.find(v=>v.variant_code===c.variant_code)!;for(const section of v.sections){const p=c.sections[section.section_id]??{};c.sections[section.section_id]=p;const group=s.groups.find(g=>g.tag===c.tag);if(group?.locked&&group.position&&p.position)p.locked=true;const pos=p.position?{x:p.position.x+(p.relative?(group?.position?.x??0):0),y:p.position.y+(p.relative?(group?.position?.y??0):0)}:{x:0,y:0};const label_padding:Partial<Record<'left'|'right'|'top'|'bottom',number>>={};for(const pin of section.pins){const net=byPin.get(c.id+'\0'+pin.number);if(!net||net.render==='wire'&&net.pins.length>1)continue;const extent=net.role==='ground'?10:Math.min(25,(net.name||net.id).length*1.45+7);if(pin.side==='left'||pin.side==='right')label_padding[pin.side]=Math.max(label_padding[pin.side]??0,extent);else{label_padding[pin.side]=11;label_padding.right=Math.max(label_padding.right??0,extent);}}const b=sectionBounds(section,p.rotation,p.mirror,{...c,label_padding});sections.push({label_padding,key:`${c.id}/${section.section_id}`,instance:c,section,placement:p,sheet_id:p.sheet_id??group?.sheet_id??'',position:pos,rotation:p.rotation??0,mirror:p.mirror??false,width:b.right-b.x,height:b.bottom-b.y});}}
+ for(const c of s.components){const d=lib.find(d=>d.component_code===c.component_code)!;const f=fingerprint(d);if(c.definition_fingerprint&&c.definition_fingerprint!==f)issues.push({severity:'warning',code:'DEFINITION_CHANGED',message:`${c.designator}: библиотечное определение изменено; используется текущее`});c.definition_fingerprint=f;const v=d.variants.find(v=>v.variant_code===c.variant_code)!;for(const section of v.sections){const p=c.sections[section.section_id]??{};c.sections[section.section_id]=p;const group=s.groups.find(g=>g.tag===c.tag);if(group?.locked&&group.position&&p.position)p.locked=true;const pos=p.position?{x:p.position.x+(p.relative?(group?.position?.x??0):0),y:p.position.y+(p.relative?(group?.position?.y??0):0)}:{x:0,y:0};const label_padding:Partial<Record<'left'|'right'|'top'|'bottom',number>>={};for(const pin of section.pins){const net=byPin.get(c.id+'\0'+pin.number);if(!net||net.render==='wire'&&net.pins.length>1)continue;const extent=labelExtent(net);if(pin.side==='left'||pin.side==='right')label_padding[pin.side]=Math.max(label_padding[pin.side]??0,extent);else{label_padding[pin.side]=11;label_padding.right=Math.max(label_padding.right??0,extent);}}const b=sectionBounds(section,p.rotation,p.mirror,{...c,label_padding});sections.push({label_padding,key:`${c.id}/${section.section_id}`,instance:c,section,placement:p,sheet_id:p.sheet_id??group?.sheet_id??'',position:pos,rotation:p.rotation??0,mirror:p.mirror??false,width:b.right-b.x,height:b.bottom-b.y});}}
+ // Never move an imported position, manual wire endpoint or explicit label
+ // anchor during feedback. Reflow above deliberately releases only soft poses.
+ const handNets=new Set(s.layout.routes.filter(r=>r.locked).map(r=>r.net_id));
+ const anchoredIds=new Set([...s.nets.filter(n=>handNets.has(n.id)).flatMap(n=>n.pins.map(p=>p.instance_id)),...(s.layout.labels??[]).map(l=>l.instance_id)]);
+ const fixedTags=new Set(s.groups.filter(g=>g.locked).map(g=>g.tag));
+ const movable=new Set(sections.filter(a=>!a.placement.position&&!a.placement.locked&&!anchoredIds.has(a.instance.id)&&!fixedTags.has(a.instance.tag??'')).map(a=>a.key));
+ const turnable=new Set(sections.filter(a=>a.placement.rotation===undefined&&!isRotationLocked(lib.find(d=>d.component_code===a.instance.component_code)!,a.section)).map(a=>a.key));
  const assigned=sections.filter(a=>(a.placement.locked||reflowAnchors.has(a.placement))&&a.placement.position);for(const a of assigned)if(!a.sheet_id)a.sheet_id=s.sheets[0].id;
  const unplaced=sections.filter(a=>!assigned.includes(a)),groups=placementGroups(unplaced,s.nets);
  let elk:Promise<LayoutElk>|undefined;
@@ -59,7 +85,7 @@ export async function buildSchematic(input:Schematic,lib:Library,options:LayoutO
   }
  }
  const group=s.groups.find(g=>g.tag===list[0].instance.tag),target=list[0].sheet_id;
- const {shape,elkFailed}=await chooseAutoShape(list,edges,byPin,passives,getElk,!!(group?.locked&&group.position));
+ const {shape,elkFailed}=await chooseAutoShape(list,edges,byPin,turnable,getElk,!!(group?.locked&&group.position));
  if(elkFailed)issues.push({severity:'warning',code:'LAYOUT_FALLBACK',message:'ELK не смог построить один из вариантов; использован доступный вариант раскладки'});
  const {offsets,rotations}=shape;
  list.forEach((a,i)=>{
@@ -72,10 +98,11 @@ export async function buildSchematic(input:Schematic,lib:Library,options:LayoutO
  // Look at a few valid translations, favoring short links to components
  // already placed. Hard anchors and retained position hints are never moved.
  const links:{index:number;x:number;y:number;to:{x:number;y:number};sheet:string;owner:string}[]=[];
- if(!group?.locked&&assigned.length&&s.components.length<=200){
+ if(!group?.locked&&assigned.length){
   const own=new Map(list.flatMap((a,index)=>a.section.pins.map(pin=>[`${a.instance.id}\0${pin.number}`,{index,...pinPosition({...a,position:{x:0,y:0}},pin)}] as const)));
   const neighbors=new Map(assigned.flatMap(a=>a.section.pins.map(pin=>[`${a.instance.id}\0${pin.number}`,{sheet:a.sheet_id,to:pinPosition(a,pin),owner:a.key}] as const)));
   for(const net of s.nets){
+   if(net.role&&net.role!=='signal'||net.render==='label'||net.pins.length>12)continue;
    const keys=net.pins.map(pin=>`${pin.instance_id}\0${pin.number}` as const);
    const connected=keys.flatMap(key=>neighbors.get(key)??[]);
    for(const key of keys){const terminal=own.get(key);if(terminal)for(const neighbor of connected.slice(0,4))if(links.length<48)links.push({...terminal,...neighbor});}
@@ -132,8 +159,6 @@ export async function buildSchematic(input:Schematic,lib:Library,options:LayoutO
  const physical=new Map(sections.map(a=>[a,placedBounds({...a,label_padding:undefined})]));
  for(const a of sections){const group=s.groups.find(g=>g.tag===a.instance.tag);const p=a.placement;p.sheet_id=a.sheet_id;if(a.rotation!==(p.rotation??0))p.rotation=a.rotation;if(p.relative&&group?.position)p.position={x:round(a.position.x-group.position.x),y:round(a.position.y-group.position.y)};else{p.position={...a.position};delete p.relative;}const b=physical.get(a)!;if(b.x<PAGE.drawing.x||b.y<PAGE.drawing.y||b.right>PAGE.drawing.right||b.bottom>PAGE.drawing.bottom||intersects(b,stamp))issues.push({severity:'warning',code:'OUT_OF_BOUNDS',message:`${a.instance.designator}/${a.section.section_id}: выходит за рабочее поле или заходит на штамп`});}
  for(let i=0;i<sections.length;i++)for(let j=i+1;j<sections.length;j++)if(sections[i].sheet_id===sections[j].sheet_id&&intersects(physical.get(sections[i])!,physical.get(sections[j])!))issues.push({severity:'warning',code:'OVERLAP',message:`Наложение ${sections[i].instance.designator}/${sections[i].section.section_id} и ${sections[j].instance.designator}/${sections[j].section.section_id}`});
- const routed=await route(s,sections);issues.push(...routed.issues);
- const labelBoxes=routed.labels.map(label=>{const a=sections.find(a=>a.instance.id===label.pin?.instance_id&&a.section.pins.some(p=>p.number===label.pin?.number));return{label,owner:a,box:labelBounds(label.text,label.point,label.alignLeft??false)};});
- for(let i=0;i<labelBoxes.length;i++){const a=labelBoxes[i];if(a.box.x<20||a.box.right>415||a.box.y<5||a.box.bottom>292)issues.push({severity:'warning',code:'LABEL_OUT_OF_BOUNDS',message:`Метка ${a.label.text}: выходит за рамку листа`});if(sections.some(other=>other!==a.owner&&other.sheet_id===a.label.sheet_id&&intersects(a.box,physical.get(other)!)))issues.push({severity:'warning',code:'LABEL_OVERLAP',message:`Метка ${a.label.text}: пересекает другой компонент или его подпись`});for(let j=i+1;j<labelBoxes.length;j++){const b=labelBoxes[j];if(a.label.sheet_id===b.label.sheet_id&&intersects(a.box,b.box))issues.push({severity:'warning',code:'LABEL_OVERLAP',message:`Пересекаются метки ${a.label.text} и ${b.label.text}`});}}
- s.layout.routes=routed.routes;return{schematic:s,sections,routes:routed.routes,labels:routed.labels,issues};
+ const routed=await route(s,sections);
+ return refineDrawing(finishDrawing(s,sections,issues,routed),routed,issues,movable,turnable);
 }
